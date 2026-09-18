@@ -43,11 +43,14 @@ class Program
             {
                 case "discover": Discover(connector, cfg); break;
                 case "read": ReadSweep(connector, cfg, ks, rounds); break;
-                case "write": WriteSweep(connector, cfg, ks, rounds, Arg(args, "types")); break;
+                case "write": WriteSweep(connector, cfg, ks, rounds, Arg(args, "types"), Arg(args, "post") == "true"); break;
                 case "mixed": Mixed(connector, cfg, rounds); break;
                 case "pool": PoolCompare(connector, cfg, rounds); break;
                 case "fail": FailureIsolation(connector, cfg); break;
                 case "post": PostTest(connector, cfg, Arg(args, "types")); break;
+                case "crud": Crud(connector, cfg, ks, rounds); break;
+                case "lanes": Lanes(connector, cfg, rounds); break;
+                case "soak": Soak(connector, cfg, int.Parse(Arg(args, "minutes") ?? "5")); break;
                 case "cleanup": Cleanup(connector, cfg); break;
                 default: Help(); break;
             }
@@ -59,8 +62,8 @@ class Program
         a.FirstOrDefault(x => x.StartsWith("--" + name + "="))?[(name.Length + 3)..];
 
     static void Help() => Console.WriteLine(
-        "modes: discover | read | write | mixed | pool | fail | post | cleanup\n" +
-        "  --cfg=<path>  --k=1,2,4,8  --rounds=N  --types=A,B");
+        "modes: discover | read | write | crud | mixed | lanes | pool | soak | fail | post | cleanup\n" +
+        "  --cfg=<path>  --k=1,2,4,8  --rounds=N  --types=A,B  --minutes=N");
 
     // ================= workload primitives =================
 
@@ -136,7 +139,9 @@ class Program
             }
             else copy.Записать();
 
-            return new OpResult { Ms = sw.ElapsedMilliseconds, Ok = true };
+            string number = null;
+            try { number = (string)copy.Номер; } catch { }
+            return new OpResult { Ms = sw.ElapsedMilliseconds, Ok = true, Number = number };
         }
         catch (Exception ex)
         {
@@ -148,6 +153,77 @@ class Program
             Com.Rel(mode); Com.Rel(copy); Com.Rel(src); Com.Rel(refObj);
             Com.Rel(sel); Com.Rel(res); Com.Rel(q);
         }
+    }
+
+    /// <summary>
+    /// Update: reopen one of OUR marked drafts by number and rewrite it.
+    /// Refuses to touch anything whose Комментарий does not start with the research
+    /// marker prefix — that check is the only thing standing between this and real data.
+    /// </summary>
+    static OpResult UpdateOp(Session s, string docType, string number, int seq)
+    {
+        var sw = Stopwatch.StartNew();
+        dynamic q = null, res = null, sel = null, rf = null, obj = null;
+        try
+        {
+            q = s.Handle.NewObject("Запрос");
+            q.Текст = $"ВЫБРАТЬ ПЕРВЫЕ 1 Ссылка КАК Ref, Комментарий КАК K " +
+                      $"ИЗ Документ.{docType} ГДЕ Номер = &N";
+            q.УстановитьПараметр("N", number);
+            res = q.Выполнить();
+            sel = res.Выбрать();
+            if (!(bool)sel.Следующий())
+                return new OpResult { Ms = sw.ElapsedMilliseconds, Ok = false, ErrKind = "other", ErrText = "doc " + number + " not found" };
+
+            string comment = (string)sel.K ?? "";
+            if (!comment.StartsWith(MarkerPrefix, StringComparison.Ordinal))
+                return new OpResult { Ms = sw.ElapsedMilliseconds, Ok = false, ErrKind = "other", ErrText = "REFUSED: not a research doc" };
+
+            rf = sel.Ref;
+            obj = rf.ПолучитьОбъект();
+            obj.Комментарий = comment + " | upd" + seq;
+            obj.Записать();
+            return new OpResult { Ms = sw.ElapsedMilliseconds, Ok = true, Number = number };
+        }
+        catch (Exception ex)
+        {
+            var (k, t) = Proc.Classify(ex);
+            return new OpResult { Ms = sw.ElapsedMilliseconds, Ok = false, ErrKind = k, ErrText = t };
+        }
+        finally { Com.Rel(obj); Com.Rel(rf); Com.Rel(sel); Com.Rel(res); Com.Rel(q); }
+    }
+
+    /// <summary>Delete one of OUR marked drafts outright. Same marker guard as UpdateOp.</summary>
+    static OpResult DeleteOp(Session s, string docType, string number)
+    {
+        var sw = Stopwatch.StartNew();
+        dynamic q = null, res = null, sel = null, rf = null, obj = null;
+        try
+        {
+            q = s.Handle.NewObject("Запрос");
+            q.Текст = $"ВЫБРАТЬ ПЕРВЫЕ 1 Ссылка КАК Ref, Комментарий КАК K " +
+                      $"ИЗ Документ.{docType} ГДЕ Номер = &N";
+            q.УстановитьПараметр("N", number);
+            res = q.Выполнить();
+            sel = res.Выбрать();
+            if (!(bool)sel.Следующий())
+                return new OpResult { Ms = sw.ElapsedMilliseconds, Ok = false, ErrKind = "other", ErrText = "doc " + number + " not found" };
+
+            string comment = (string)sel.K ?? "";
+            if (!comment.StartsWith(MarkerPrefix, StringComparison.Ordinal))
+                return new OpResult { Ms = sw.ElapsedMilliseconds, Ok = false, ErrKind = "other", ErrText = "REFUSED: not a research doc" };
+
+            rf = sel.Ref;
+            obj = rf.ПолучитьОбъект();
+            obj.Удалить();
+            return new OpResult { Ms = sw.ElapsedMilliseconds, Ok = true };
+        }
+        catch (Exception ex)
+        {
+            var (k, t) = Proc.Classify(ex);
+            return new OpResult { Ms = sw.ElapsedMilliseconds, Ok = false, ErrKind = k, ErrText = t };
+        }
+        finally { Com.Rel(obj); Com.Rel(rf); Com.Rel(sel); Com.Rel(res); Com.Rel(q); }
     }
 
     // ================= discovery =================
@@ -292,7 +368,7 @@ class Program
         }
     }
 
-    static void WriteSweep(object connector, BaseCfg cfg, int[] ks, int rounds, string typesArg)
+    static void WriteSweep(object connector, BaseCfg cfg, int[] ks, int rounds, string typesArg, bool post = false)
     {
         List<string> types;
         using (var probe = Session.Open(connector, cfg.ConnectionString, -1))
@@ -304,12 +380,12 @@ class Program
         }
         if (types.Count == 0) { Console.WriteLine("no postable doc types found"); return; }
         Console.WriteLine($"  doc types: {string.Join(", ", types)}");
-        Console.WriteLine($"  marker   : {Marker}");
+        Console.WriteLine($"  marker   : {Marker}{(post ? "   *** POSTING ENABLED ***" : "")}");
 
         Console.WriteLine("\n-- 1. SAME document type on every thread (number-allocation contention) --");
         foreach (int k in ks)
         {
-            var run = Sweep(connector, cfg, k, rounds, "write-same", (s, i) => WriteOp(s, types[0]));
+            var run = Sweep(connector, cfg, k, rounds, "write-same", (s, i) => WriteOp(s, types[0], post));
             Console.WriteLine(run.Line());
             foreach (var e in run.SampleErrors()) Console.WriteLine("     " + e);
             if (run.Failures > run.Total / 2) { Console.WriteLine("  >50% failures — stopping sweep"); break; }
@@ -322,7 +398,7 @@ class Program
         foreach (int k in ks)
         {
             var run = Sweep(connector, cfg, k, rounds, "write-diff",
-                            (s, i) => WriteOp(s, types[i % types.Count]));
+                            (s, i) => WriteOp(s, types[i % types.Count], post));
             Console.WriteLine(run.Line());
             foreach (var e in run.SampleErrors()) Console.WriteLine("     " + e);
             if (run.Failures > run.Total / 2) { Console.WriteLine("  >50% failures — stopping sweep"); break; }
@@ -380,6 +456,199 @@ class Program
                           $"({(baseRun.P50 <= 0 ? 0 : (double)readRun.P50 / baseRun.P50):F2}x)");
 
         foreach (var s in sessions) s.Dispose();
+    }
+
+    /// <summary>
+    /// Full lifecycle under concurrency: CREATE -> UPDATE -> DELETE on the documents this
+    /// run made. Each phase is measured separately so a slow phase cannot hide behind a
+    /// fast one. Nothing outside this run's marker is ever touched.
+    /// </summary>
+    static void Crud(object connector, BaseCfg cfg, int[] ks, int rounds)
+    {
+        List<string> types;
+        using (var probe = Session.Open(connector, cfg.ConnectionString, -1))
+        {
+            Console.WriteLine($"connect: {probe.ConnectMs} ms");
+            types = PostedDocTypes(probe, 4);
+        }
+        if (types.Count == 0) { Console.WriteLine("no usable doc types"); return; }
+        string docType = types[0];
+        Console.WriteLine($"  doc type : {docType}");
+        Console.WriteLine($"  marker   : {Marker}");
+
+        foreach (int k in ks)
+        {
+            Console.WriteLine($"\n---------- K={k} ----------");
+            var numbers = new System.Collections.Concurrent.ConcurrentBag<string>();
+
+            var create = Sweep(connector, cfg, k, rounds, "create", (s, i) =>
+            {
+                var r = WriteOp(s, docType);
+                if (r.Ok && r.Number != null) numbers.Add(r.Number);
+                return r;
+            });
+            Console.WriteLine("  CREATE " + create.Line());
+
+            var pool = numbers.ToArray();
+            if (pool.Length == 0) { Console.WriteLine("  nothing created — skipping update/delete"); continue; }
+
+            int cursor = -1;
+            var update = Sweep(connector, cfg, k, rounds, "update", (s, i) =>
+            {
+                int idx = Interlocked.Increment(ref cursor);
+                if (idx >= pool.Length) idx %= pool.Length;
+                return UpdateOp(s, docType, pool[idx], idx);
+            });
+            Console.WriteLine("  UPDATE " + update.Line());
+            foreach (var e in update.SampleErrors(2)) Console.WriteLine("     " + e);
+
+            int dcursor = -1;
+            var del = Sweep(connector, cfg, k, Math.Max(1, pool.Length / k), "delete", (s, i) =>
+            {
+                int idx = Interlocked.Increment(ref dcursor);
+                if (idx >= pool.Length) return new OpResult { Ms = 0, Ok = true };
+                return DeleteOp(s, docType, pool[idx]);
+            });
+            Console.WriteLine("  DELETE " + del.Line());
+            foreach (var e in del.SampleErrors(2)) Console.WriteLine("     " + e);
+
+            Thread.Sleep(1500);
+        }
+    }
+
+    /// <summary>
+    /// Should reads and writes share one pool, or get their own lane?
+    /// Same total session budget in both arms, so the comparison is fair.
+    /// </summary>
+    static void Lanes(object connector, BaseCfg cfg, int rounds)
+    {
+        string cat; List<string> types;
+        using (var probe = Session.Open(connector, cfg.ConnectionString, -1))
+        {
+            cat = BiggestCatalog(probe);
+            types = PostedDocTypes(probe, 1);
+        }
+        if (cat == null || types.Count == 0) { Console.WriteLine("missing targets"); return; }
+        string sql = $"ВЫБРАТЬ ПЕРВЫЕ 500 Ссылка, Код, Наименование ИЗ Справочник.{cat}";
+        string docType = types[0];
+        Console.WriteLine($"  marker   : {Marker}");
+
+        // Arm 1: ONE shared pool of 4, readers and writers compete for the same sessions.
+        Console.WriteLine("\n-- arm 1: SHARED pool of 4 (2 reader threads + 2 writer threads) --");
+        RunLanes(connector, cfg, rounds, sql, docType, shared: true);
+
+        Thread.Sleep(2000);
+
+        // Arm 2: split — 2 sessions reserved for reads, 2 reserved for writes.
+        Console.WriteLine("\n-- arm 2: SPLIT pools (read pool 2 + write pool 2) --");
+        RunLanes(connector, cfg, rounds, sql, docType, shared: false);
+    }
+
+    static void RunLanes(object connector, BaseCfg cfg, int rounds, string sql, string docType, bool shared)
+    {
+        var readRun = new Run { Label = "read", K = 2, SessionCount = 4 };
+        var writeRun = new Run { Label = "write", K = 2, SessionCount = 4 };
+
+        SessionPool shared4 = null, readPool = null, writePool = null;
+        if (shared) shared4 = new SessionPool(connector, cfg.ConnectionString, 4);
+        else { readPool = new SessionPool(connector, cfg.ConnectionString, 2); writePool = new SessionPool(connector, cfg.ConnectionString, 2); }
+
+        var (r0, c0) = Proc.Snapshot();
+        var sw = Stopwatch.StartNew();
+        var threads = new List<Thread>();
+
+        for (int i = 0; i < 2; i++)
+            threads.Add(new Thread(() =>
+            {
+                for (int r = 0; r < rounds; r++)
+                {
+                    var p = shared ? shared4 : readPool;
+                    var s = p.Rent();
+                    try { readRun.Add(ReadOp(s, sql)); } finally { p.Return(s); }
+                }
+            }));
+
+        for (int i = 0; i < 2; i++)
+            threads.Add(new Thread(() =>
+            {
+                for (int r = 0; r < rounds; r++)
+                {
+                    var p = shared ? shared4 : writePool;
+                    var s = p.Rent();
+                    try { writeRun.Add(WriteOp(s, docType)); } finally { p.Return(s); }
+                }
+            }));
+
+        foreach (var t in threads) t.Start();
+        foreach (var t in threads) t.Join();
+        long wall = sw.ElapsedMilliseconds;
+        readRun.WallMs = wall; writeRun.WallMs = wall;
+        var (r1, c1) = Proc.Snapshot();
+        readRun.PeakRssMb = writeRun.PeakRssMb = r1;
+        readRun.CpuPercent = writeRun.CpuPercent = (c1 - c0).TotalSeconds / Math.Max(0.001, wall / 1000.0) / Environment.ProcessorCount * 100.0;
+
+        Console.WriteLine("  READ  " + readRun.Line());
+        Console.WriteLine("  WRITE " + writeRun.Line());
+
+        shared4?.Dispose(); readPool?.Dispose(); writePool?.Dispose();
+    }
+
+    /// <summary>Sustained mixed load — does RSS grow, do failures appear, does it survive?</summary>
+    static void Soak(object connector, BaseCfg cfg, int minutes)
+    {
+        string cat; List<string> types;
+        using (var probe = Session.Open(connector, cfg.ConnectionString, -1))
+        {
+            cat = BiggestCatalog(probe);
+            types = PostedDocTypes(probe, 1);
+        }
+        string sql = $"ВЫБРАТЬ ПЕРВЫЕ 500 Ссылка, Код, Наименование ИЗ Справочник.{cat}";
+        string docType = types.FirstOrDefault();
+        Console.WriteLine($"  marker   : {Marker}  duration: {minutes} min");
+
+        using var pool = new SessionPool(connector, cfg.ConnectionString, 4);
+        var run = new Run { Label = "soak", K = 4, SessionCount = 4 };
+        var deadline = DateTime.UtcNow.AddMinutes(minutes);
+        var (r0, c0) = Proc.Snapshot();
+        long rssStart = r0, rssPeak = r0;
+        var sw = Stopwatch.StartNew();
+
+        var threads = new List<Thread>();
+        for (int i = 0; i < 4; i++)
+        {
+            int idx = i;
+            threads.Add(new Thread(() =>
+            {
+                while (DateTime.UtcNow < deadline)
+                {
+                    var s = pool.Rent();
+                    try
+                    {
+                        // 3 reads to 1 write, roughly the shape of real traffic
+                        run.Add(idx == 3 && docType != null ? WriteOp(s, docType) : ReadOp(s, sql));
+                    }
+                    finally { pool.Return(s); }
+                }
+            }));
+        }
+        foreach (var t in threads) t.Start();
+
+        while (threads.Any(t => t.IsAlive))
+        {
+            Thread.Sleep(15000);
+            var (rss, _) = Proc.Snapshot();
+            if (rss > rssPeak) rssPeak = rss;
+            Console.WriteLine($"   t+{sw.Elapsed.TotalSeconds,5:F0}s  ops={run.Total,-6} fail={run.Failures,-3} rss={rss}MB recreated={pool.Recreated}");
+        }
+        foreach (var t in threads) t.Join();
+
+        run.WallMs = sw.ElapsedMilliseconds;
+        var (r1, c1) = Proc.Snapshot();
+        run.PeakRssMb = rssPeak;
+        run.CpuPercent = (c1 - c0).TotalSeconds / Math.Max(0.001, run.WallMs / 1000.0) / Environment.ProcessorCount * 100.0;
+        Console.WriteLine("  " + run.Line());
+        Console.WriteLine($"  rss {rssStart}MB -> {r1}MB (peak {rssPeak}MB), sessions recreated: {pool.Recreated}");
+        foreach (var e in run.SampleErrors(3)) Console.WriteLine("     " + e);
     }
 
     // ================= session pool =================

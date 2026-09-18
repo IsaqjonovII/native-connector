@@ -268,14 +268,107 @@ different operation and was not retested here.
 
 ---
 
+---
+
+# Phase 2 — update/delete, posting, lanes, soak
+
+Same harness, same day. Cleanup verified `total marked: 0` on both bases afterwards.
+
+## C — Full CRUD lifecycle under concurrency (KAN)
+
+Create → update → delete, on documents this run created. Each phase measured separately.
+
+| K | phase | op/s | p50 | p95 | max | fail |
+|---|---|---|---|---|---|---|
+| 1 | CREATE | 4.6 | 43 | 1033 | 1033 | 0 |
+| 1 | UPDATE | 8.6 | 28 | 532 | 532 | 0 |
+| 1 | **DELETE** | **0.7** | 87 | 7783 | 7783 | 0 |
+| 2 | CREATE | 13.4 | 51 | 619 | 619 | 0 |
+| 2 | UPDATE | 16.7 | 30 | 561 | 561 | 0 |
+| 2 | **DELETE** | **2.5** | 122 | 4109 | 4109 | 0 |
+| 4 | CREATE | 20.0 | 52 | 807 | 917 | 0 |
+| 4 | UPDATE | 19.0 | 52 | 844 | 998 | 0 |
+| 4 | **DELETE** | **2.3** | 327 | 7325 | 9113 | 0 |
+
+- **CREATE** scales 4.6 → 20.0 op/s.
+- **UPDATE** scales to K=2 then flattens; it is consistently the *cheapest* operation at p50.
+- **DELETE is an order of magnitude worse than both and does not scale at all** — 0.7 → 2.5 → 2.3 op/s, with multi-second tails (max 9.1 s). Zero failures, so it is slow rather than unsafe.
+
+Direct deletion (`Удалить()`) forces 1C to check referential integrity across the base. Marking
+for deletion (`УстановитьПометкуУдаления`) is by comparison very cheap — cleanup marked 6391
+documents in a few seconds. **Direct delete should never sit on a synchronous request path.**
+
+## D — Shared pool vs split read/write lanes (KAN)
+
+Identical session budget in both arms (4 sessions), 2 reader threads + 2 writer threads.
+
+| arm | read p50 | read p95 | write p50 | write p95 | wall |
+|---|---|---|---|---|---|
+| shared pool of 4 | 8 ms | **24 ms** | 38 ms | 100 ms | 1384 ms |
+| split: read 2 + write 2 | 9 ms | **11 ms** | 48 ms | 146 ms | 1604 ms |
+
+Zero failures in both. Throughput is a wash — shared is marginally faster overall. The one real
+difference is the **read tail: p95 24 ms shared vs 11 ms split.** Splitting stops a slow write
+from parking behind a read slot, at the cost of slightly worse write latency.
+
+Not a safety finding. At this scale it is a queueing preference, not a requirement.
+
+## E — Soak: 5 minutes sustained mixed load (KAN, pool of 4, ~3:1 read:write)
+
+```
+t+ 15s ops=3242  fail=0 rss=373MB      t+180s ops=45605 fail=0 rss=402MB
+t+ 60s ops=14673 fail=0 rss=380MB      t+240s ops=64848 fail=0 rss=411MB
+t+120s ops=29383 fail=0 rss=392MB      t+285s ops=78662 fail=0 rss=376MB
+                                        t+300s ops=82755 fail=0 rss=392MB
+```
+
+**82 755 operations, zero failures, 275.5 op/s sustained, p50 9 ms, p95 38 ms, max 1004 ms.**
+RSS went 309 → 418 MB peak and then *fell back* to 376 MB at t+285s — that is GC, not a leak.
+No session was recreated. CPU 17%.
+
+This is the strongest stability evidence in the study.
+
+## F — Posting
+
+**Posting works — on the file base.** A single clone-and-post on bilim succeeded in 12.7 s with
+a clean exit. So posting is not broken in general; KAN's failure is KAN's known posting blocker.
+
+Post concurrency on the file base (`--post=true`):
+
+| pattern | K=1 | K=2 | K=4 |
+|---|---|---|---|
+| same doc type | 3.0 op/s | 3.5 op/s | 4.7 op/s (RSS 2044 MB) |
+| different doc types | 1.7 op/s | 1.3 op/s | **0.6 op/s, 6 of 20 ops FAILED** (RSS 2733 MB) |
+
+The K=4 different-type failures are the textless-1C-error NRE again
+(`ExcepInfo.GetException()`), with p95 at **22 seconds**.
+
+**Posting is where concurrency actually breaks.** Same-type posting barely scales; mixed-type
+posting degrades below serial and starts failing. Posting should be treated as a serial
+operation until proven otherwise.
+
+---
+
+## Revised recommendations
+
+| operation | server base | file base |
+|---|---|---|
+| read | K=4 | K=4 (memory-bound) |
+| create | K=4 | K=2 |
+| update | K=2–4 | K=2 |
+| delete (direct) | **K=1, off the request path** | K=1, off the request path |
+| post | **K=1** | **K=1** |
+
+---
+
 ## Not established
 
-- Posting concurrency — blocked by KAN's posting blocker.
-- Shared read+write pool behaviour.
+- Post concurrency on a *server* base — KAN's posting blocker still prevents it.
+- Why mixed doc types are slower than one type for both writes and posts.
 - File-base K=8 writes — not attempted after K=4 regressed.
-- Whether the different-type write penalty is metadata warm-up or something else.
 - Multi-process file-base behaviour — only multi-session within one process was tested.
 - The connector-recreate (`TYPE_E_CANTLOADLIBRARY`) path.
-- Long-run stability; the longest run here was seconds, not hours.
+- Soak beyond 5 minutes, and soak on a file base.
+- Whether split lanes matter at higher load than tested here.
 
 No migration recommendation is made at this stage.

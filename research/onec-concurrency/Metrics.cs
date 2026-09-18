@@ -8,6 +8,7 @@ public sealed class OpResult
     public bool Ok;
     public string ErrKind;      // com | onec | lock | number | other
     public string ErrText;
+    public string Number;       // document number, when the op created one
 }
 
 /// <summary>Latency percentiles, throughput, failure breakdown, plus process RSS/CPU.</summary>
