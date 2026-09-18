@@ -1,0 +1,138 @@
+<Page
+    x:Class="AibaShell.Views.BaseDetailPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" Padding="24,14,24,10">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <Button Click="Back_Click" Width="34" Height="34" Padding="0" VerticalAlignment="Center">
+                    <FontIcon Glyph="&#xE72B;" FontSize="14" />
+                </Button>
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock x:Name="NameText" Style="{StaticResource PageTitleStyle}" />
+                        <Border x:Name="StatePill" CornerRadius="3" Padding="8,2,8,2" VerticalAlignment="Center"
+                                Background="{ThemeResource TableHeaderBrush}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <Ellipse x:Name="StateDot" Width="8" Height="8" VerticalAlignment="Center" />
+                                <TextBlock x:Name="StateText" FontSize="12" FontWeight="SemiBold" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                    <TextBlock x:Name="SubtitleText" Style="{StaticResource PageSubtitleStyle}" />
+                </StackPanel>
+            </StackPanel>
+
+            <CommandBar HorizontalAlignment="Right" DefaultLabelPosition="Right" Background="Transparent" IsOpen="False">
+                <AppBarButton Icon="Link" Label="Connect" Click="Connect_Click" />
+                <AppBarButton Icon="Refresh" Label="Restart worker" Click="Restart_Click" />
+                <AppBarButton Icon="Play" Label="Start sync" Click="StartSync_Click" />
+                <AppBarButton Icon="Stop" Label="Stop sync" Click="StopSync_Click" />
+                <AppBarSeparator />
+                <AppBarButton Icon="Document" Label="View logs" Click="Logs_Click" />
+            </CommandBar>
+        </Grid>
+
+        <muxc:InfoBar x:Name="ProblemBar" Grid.Row="1" Margin="24,0,24,8" Severity="Error" IsClosable="False" IsOpen="False" />
+
+        <ScrollViewer Grid.Row="2" Padding="24,0,24,24" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="12">
+
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Style="{StaticResource PanelStyle}">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="CONNECTION" Style="{StaticResource PanelTitleStyle}" />
+                            <Grid><TextBlock Text="Base type" Style="{StaticResource MetricLabelStyle}" /><TextBlock x:Name="KindText" HorizontalAlignment="Right" FontSize="12" FontWeight="SemiBold" /></Grid>
+                            <Grid><TextBlock Text="Server / path" Style="{StaticResource MetricLabelStyle}" /><TextBlock x:Name="LocationText" HorizontalAlignment="Right" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxWidth="210" /></Grid>
+                            <Grid><TextBlock Text="Organization" Style="{StaticResource MetricLabelStyle}" /><TextBlock x:Name="OrgText" HorizontalAlignment="Right" FontSize="12" FontWeight="SemiBold" /></Grid>
+                            <Grid><TextBlock Text="1C version" Style="{StaticResource MetricLabelStyle}" /><TextBlock x:Name="VersionText" HorizontalAlignment="Right" FontSize="12" FontWeight="SemiBold" /></Grid>
+                            <Grid><TextBlock Text="COM version" Style="{StaticResource MetricLabelStyle}" /><TextBlock x:Name="ComVersionText" HorizontalAlignment="Right" FontSize="12" FontWeight="SemiBold" /></Grid>
+                            <Grid><TextBlock Text="COM status" Style="{StaticResource MetricLabelStyle}" /><TextBlock x:Name="ComStateText" HorizontalAlignment="Right" FontSize="12" FontWeight="SemiBold" /></Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="1" Style="{StaticResource PanelStyle}">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="WORKER" Style="{StaticResource PanelTitleStyle}" />
+                            <Grid><TextBlock Text="Process" Style="{StaticResource MetricLabelStyle}" /><TextBlock x:Name="WorkerText" HorizontalAlignment="Right" FontSize="12" FontWeight="SemiBold" /></Grid>
+                            <Grid><TextBlock Text="PID" Style="{StaticResource MetricLabelStyle}" /><TextBlock x:Name="PidText" HorizontalAlignment="Right" FontSize="12" FontWeight="SemiBold" /></Grid>
+                            <Grid><TextBlock Text="Port" Style="{StaticResource MetricLabelStyle}" /><TextBlock x:Name="PortText" HorizontalAlignment="Right" FontSize="12" FontWeight="SemiBold" /></Grid>
+                            <Grid><TextBlock Text="Memory" Style="{StaticResource MetricLabelStyle}" /><TextBlock x:Name="MemText" HorizontalAlignment="Right" FontSize="12" FontWeight="SemiBold" /></Grid>
+                            <Grid><TextBlock Text="Uptime" Style="{StaticResource MetricLabelStyle}" /><TextBlock x:Name="UptimeText" HorizontalAlignment="Right" FontSize="12" FontWeight="SemiBold" /></Grid>
+                            <Grid><TextBlock Text="Requests served" Style="{StaticResource MetricLabelStyle}" /><TextBlock x:Name="ReqText" HorizontalAlignment="Right" FontSize="12" FontWeight="SemiBold" /></Grid>
+                            <Grid><TextBlock Text="Queue depth" Style="{StaticResource MetricLabelStyle}" /><TextBlock x:Name="QueueText" HorizontalAlignment="Right" FontSize="12" FontWeight="SemiBold" /></Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="2" Style="{StaticResource PanelStyle}">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="SYNC" Style="{StaticResource PanelTitleStyle}" />
+                            <TextBlock x:Name="CurrentObjectText" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                            <muxc:ProgressBar x:Name="ProgressBarCtl" Maximum="100" Height="4" Margin="0,4,0,4" />
+                            <Grid><TextBlock Text="Progress" Style="{StaticResource MetricLabelStyle}" /><TextBlock x:Name="ProgressText" HorizontalAlignment="Right" FontSize="12" FontWeight="SemiBold" /></Grid>
+                            <Grid><TextBlock Text="Rows read" Style="{StaticResource MetricLabelStyle}" /><TextBlock x:Name="RowsText" HorizontalAlignment="Right" FontSize="12" FontWeight="SemiBold" /></Grid>
+                            <Grid><TextBlock Text="Throughput" Style="{StaticResource MetricLabelStyle}" /><TextBlock x:Name="RateText" HorizontalAlignment="Right" FontSize="12" FontWeight="SemiBold" /></Grid>
+                            <Grid><TextBlock Text="Last successful sync" Style="{StaticResource MetricLabelStyle}" /><TextBlock x:Name="LastSyncText" HorizontalAlignment="Right" FontSize="12" FontWeight="SemiBold" /></Grid>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <Border Style="{StaticResource PanelStyle}">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="OBJECTS UNDER SYNC" Style="{StaticResource PanelTitleStyle}" />
+                        <muxc:Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" IsExpanded="True">
+                            <muxc:Expander.Header>
+                                <TextBlock Text="Registers (4)" FontSize="13" />
+                            </muxc:Expander.Header>
+                            <StackPanel Spacing="4" Padding="0,4,0,4">
+                                <TextBlock Text="AccountingRegister.Hozraschetnyy — 1 884 210 rows — cursor walk" Style="{StaticResource MonoTextStyle}" />
+                                <TextBlock Text="AccumulationRegister.RoznichnayaVyruchka — 402 118 rows — literal period" Style="{StaticResource MonoTextStyle}" />
+                                <TextBlock Text="AccumulationRegister.TovaryNaSkladah — 188 004 rows — keyset paging" Style="{StaticResource MonoTextStyle}" />
+                                <TextBlock Text="InformationRegister.KursyValyut — 7 058 rows — full read" Style="{StaticResource MonoTextStyle}" />
+                            </StackPanel>
+                        </muxc:Expander>
+                        <muxc:Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                            <muxc:Expander.Header>
+                                <TextBlock Text="Catalogs (6)" FontSize="13" />
+                            </muxc:Expander.Header>
+                            <StackPanel Spacing="4" Padding="0,4,0,4">
+                                <TextBlock Text="Catalog.Nomenklatura — 44 920 rows — projection hash unchanged" Style="{StaticResource MonoTextStyle}" />
+                                <TextBlock Text="Catalog.Kontragenty — 8 114 rows — 212 changed" Style="{StaticResource MonoTextStyle}" />
+                                <TextBlock Text="Catalog.Sklady — 38 rows" Style="{StaticResource MonoTextStyle}" />
+                                <TextBlock Text="Catalog.Organizatsii — 19 rows (multi-org connection)" Style="{StaticResource MonoTextStyle}" />
+                                <TextBlock Text="Catalog.DogovoryKontragentov — 2 908 rows" Style="{StaticResource MonoTextStyle}" />
+                                <TextBlock Text="Catalog.FizicheskieLitsa — 1 204 rows" Style="{StaticResource MonoTextStyle}" />
+                            </StackPanel>
+                        </muxc:Expander>
+                        <muxc:Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                            <muxc:Expander.Header>
+                                <TextBlock Text="Documents (5)" FontSize="13" />
+                            </muxc:Expander.Header>
+                            <StackPanel Spacing="4" Padding="0,4,0,4">
+                                <TextBlock Text="Document.RealizatsiyaTovarovUslug — schema read-through" Style="{StaticResource MonoTextStyle}" />
+                                <TextBlock Text="Document.PostuplenieNaRaschetnyyMinusSchet" Style="{StaticResource MonoTextStyle}" />
+                                <TextBlock Text="Document.SpisanieSRaschetnogoScheta" Style="{StaticResource MonoTextStyle}" />
+                                <TextBlock Text="Document.AvansovyyOtchet" Style="{StaticResource MonoTextStyle}" />
+                                <TextBlock Text="Document.OtchetORoznichnyhProdazhah" Style="{StaticResource MonoTextStyle}" />
+                            </StackPanel>
+                        </muxc:Expander>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

@@ -1,0 +1,13 @@
+bin/
+obj/
+
+# Never commit these — they hold live 1C base credentials.
+config.json
+config.local.json
+*.local.json
+.env
+.env.*
+
+*.user
+*.suo
+.vs/

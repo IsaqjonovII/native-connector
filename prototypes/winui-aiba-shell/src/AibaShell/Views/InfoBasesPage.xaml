@@ -1,0 +1,161 @@
+<Page
+    x:Class="AibaShell.Views.InfoBasesPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    xmlns:svc="using:AibaShell.Services">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" Padding="24,18,24,10">
+            <StackPanel>
+                <TextBlock Text="Information Bases" Style="{StaticResource PageTitleStyle}" />
+                <TextBlock x:Name="SubtitleText" Style="{StaticResource PageSubtitleStyle}" />
+            </StackPanel>
+            <CommandBar HorizontalAlignment="Right" DefaultLabelPosition="Right" Background="Transparent" IsOpen="False">
+                <AppBarButton Icon="Add" Label="Add base" Click="Add_Click" />
+                <AppBarButton Icon="Sync" Label="Sync selected" Click="SyncSelected_Click" />
+                <AppBarButton Icon="Refresh" Label="Restart worker" Click="RestartWorker_Click" />
+                <AppBarSeparator />
+                <AppBarButton Icon="Find" Label="Filter" />
+            </CommandBar>
+        </Grid>
+
+        <Grid Grid.Row="1" Padding="24,0,24,10" ColumnSpacing="10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="300" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <AutoSuggestBox Grid.Column="0" x:Name="SearchBox" PlaceholderText="Filter by name, server or organization"
+                            QueryIcon="Find" TextChanged="SearchBox_TextChanged" />
+            <muxc:SelectorBar Grid.Column="1" x:Name="StateFilter" SelectionChanged="StateFilter_SelectionChanged">
+                <muxc:SelectorBarItem Text="All" Tag="all" IsSelected="True" />
+                <muxc:SelectorBarItem Text="Connected" Tag="connected" />
+                <muxc:SelectorBarItem Text="Syncing" Tag="syncing" />
+                <muxc:SelectorBarItem Text="Problems" Tag="problems" />
+            </muxc:SelectorBar>
+            <TextBlock Grid.Column="2" x:Name="CountText" HorizontalAlignment="Right" VerticalAlignment="Center"
+                       FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        </Grid>
+
+        <Grid Grid.Row="2" Padding="24,0,24,24">
+            <Border Style="{StaticResource PanelStyle}" Padding="0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <!-- Header row. Column widths are duplicated in the item template below. -->
+                    <Border Grid.Row="0" Background="{ThemeResource TableHeaderBrush}"
+                            BorderBrush="{ThemeResource DividerBrush}" BorderThickness="0,0,0,1"
+                            CornerRadius="6,6,0,0" Padding="16,9,16,9">
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="2.2*" />
+                                <ColumnDefinition Width="1.1*" />
+                                <ColumnDefinition Width="1.2*" />
+                                <ColumnDefinition Width="1.5*" />
+                                <ColumnDefinition Width="1.1*" />
+                                <ColumnDefinition Width="1.5*" />
+                                <ColumnDefinition Width="1.1*" />
+                                <ColumnDefinition Width="0.9*" />
+                                <ColumnDefinition Width="0.9*" />
+                                <ColumnDefinition Width="44" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="NAME" Style="{StaticResource TableHeaderTextStyle}" />
+                            <TextBlock Grid.Column="1" Text="TYPE" Style="{StaticResource TableHeaderTextStyle}" />
+                            <TextBlock Grid.Column="2" Text="1C VERSION" Style="{StaticResource TableHeaderTextStyle}" />
+                            <TextBlock Grid.Column="3" Text="STATUS" Style="{StaticResource TableHeaderTextStyle}" />
+                            <TextBlock Grid.Column="4" Text="WORKER" Style="{StaticResource TableHeaderTextStyle}" />
+                            <TextBlock Grid.Column="5" Text="COM" Style="{StaticResource TableHeaderTextStyle}" />
+                            <TextBlock Grid.Column="6" Text="LAST SYNC" Style="{StaticResource TableHeaderTextStyle}" />
+                            <TextBlock Grid.Column="7" Text="ROWS/SEC" Style="{StaticResource TableHeaderTextStyle}" />
+                            <TextBlock Grid.Column="8" Text="MEMORY" Style="{StaticResource TableHeaderTextStyle}" />
+                            <TextBlock Grid.Column="9" Text="" Style="{StaticResource TableHeaderTextStyle}" />
+                        </Grid>
+                    </Border>
+
+                    <ListView Grid.Row="1" x:Name="BaseList" Style="{StaticResource DenseListViewStyle}"
+                              ItemClick="BaseList_ItemClick" Padding="0,2,0,6">
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem">
+                                <Setter Property="Padding" Value="16,0,16,0" />
+                                <Setter Property="MinHeight" Value="44" />
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="svc:InfoBase">
+                                <Grid ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="2.2*" />
+                                        <ColumnDefinition Width="1.1*" />
+                                        <ColumnDefinition Width="1.2*" />
+                                        <ColumnDefinition Width="1.5*" />
+                                        <ColumnDefinition Width="1.1*" />
+                                        <ColumnDefinition Width="1.5*" />
+                                        <ColumnDefinition Width="1.1*" />
+                                        <ColumnDefinition Width="0.9*" />
+                                        <ColumnDefinition Width="0.9*" />
+                                        <ColumnDefinition Width="44" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                        <TextBlock Text="{x:Bind Name}" FontSize="13" FontWeight="SemiBold" />
+                                        <TextBlock Text="{x:Bind Location}" FontSize="11"
+                                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+
+                                    <TextBlock Grid.Column="1" Text="{x:Bind Kind}" Style="{StaticResource CellSecondaryTextStyle}" />
+                                    <TextBlock Grid.Column="2" Text="{x:Bind OneCVersion}" Style="{StaticResource MonoTextStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+                                    <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                                        <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                                                 Fill="{x:Bind Status, Mode=OneWay, Converter={StaticResource StatusBrush}}" />
+                                        <TextBlock Text="{x:Bind State, Mode=OneWay}" Style="{StaticResource CellTextStyle}" />
+                                    </StackPanel>
+
+                                    <TextBlock Grid.Column="4" Text="{x:Bind Worker, Mode=OneWay}" Style="{StaticResource CellSecondaryTextStyle}" />
+
+                                    <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                                        <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                                                 Fill="{x:Bind ComStatus, Mode=OneWay, Converter={StaticResource StatusBrush}}" />
+                                        <TextBlock Text="{x:Bind ComState, Mode=OneWay}" Style="{StaticResource CellSecondaryTextStyle}" />
+                                    </StackPanel>
+
+                                    <TextBlock Grid.Column="6" Text="{x:Bind LastSyncText, Mode=OneWay}" Style="{StaticResource CellSecondaryTextStyle}" />
+                                    <TextBlock Grid.Column="7" Text="{x:Bind RowsPerSecondText, Mode=OneWay}" Style="{StaticResource MonoTextStyle}" />
+                                    <TextBlock Grid.Column="8" Text="{x:Bind WorkerMemoryText, Mode=OneWay}" Style="{StaticResource MonoTextStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+                                    <Button Grid.Column="9" Width="32" Height="28" Padding="0" Background="Transparent"
+                                            BorderThickness="0" VerticalAlignment="Center">
+                                        <FontIcon Glyph="&#xE712;" FontSize="14" />
+                                        <Button.Flyout>
+                                            <MenuFlyout>
+                                                <MenuFlyoutItem Text="Open details" Click="MenuOpen_Click" />
+                                                <MenuFlyoutItem Text="Start sync" Click="MenuSync_Click" />
+                                                <MenuFlyoutItem Text="Restart worker" Click="MenuRestart_Click" />
+                                                <MenuFlyoutSeparator />
+                                                <MenuFlyoutItem Text="Disconnect" Click="MenuDisconnect_Click" />
+                                            </MenuFlyout>
+                                        </Button.Flyout>
+                                    </Button>
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</Page>

@@ -1,0 +1,289 @@
+<Page
+    x:Class="AibaShell.Views.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls">
+
+    <Page.Resources>
+        <!-- Every settings row is label block on the left, one control on the right. -->
+        <Style x:Key="SettingRowStyle" TargetType="Grid">
+            <Setter Property="ColumnSpacing" Value="24" />
+            <Setter Property="Padding" Value="0,2,0,2" />
+        </Style>
+        <Style x:Key="SettingNameStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+        <Style x:Key="SettingHintStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+        </Style>
+    </Page.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Padding="24,18,24,10">
+            <TextBlock Text="Settings" Style="{StaticResource PageTitleStyle}" />
+            <TextBlock Text="In-memory only in the prototype. Nothing here is written to disk." Style="{StaticResource PageSubtitleStyle}" />
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="1" Padding="24,0,24,24" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="10" MaxWidth="900" HorizontalAlignment="Left">
+
+                <TextBlock Text="GENERAL" Style="{StaticResource PanelTitleStyle}" Margin="0,4,0,2" />
+
+                <muxc:Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" IsExpanded="True">
+                    <muxc:Expander.Header>
+                        <StackPanel Padding="0,6,0,6">
+                            <TextBlock Text="Startup and window" FontSize="14" />
+                            <TextBlock Text="How the connector behaves when Windows starts" Style="{StaticResource SettingHintStyle}" />
+                        </StackPanel>
+                    </muxc:Expander.Header>
+                    <StackPanel Spacing="16" Padding="0,8,0,8">
+                        <Grid Style="{StaticResource SettingRowStyle}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Start with Windows" Style="{StaticResource SettingNameStyle}" />
+                                <TextBlock Text="Registers a per-user startup task; the shell starts minimized." Style="{StaticResource SettingHintStyle}" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" x:Name="StartWithWindows" OnContent="" OffContent=""
+                                          MinWidth="0" VerticalAlignment="Center" Toggled="Toggle_Changed" />
+                        </Grid>
+
+                        <Grid Style="{StaticResource SettingRowStyle}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Minimize to tray" Style="{StaticResource SettingNameStyle}" />
+                                <TextBlock Text="Closing the window keeps workers and sync running." Style="{StaticResource SettingHintStyle}" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" x:Name="MinimizeToTray" OnContent="" OffContent=""
+                                          MinWidth="0" VerticalAlignment="Center" Toggled="Toggle_Changed" />
+                        </Grid>
+
+                        <Grid Style="{StaticResource SettingRowStyle}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Theme" Style="{StaticResource SettingNameStyle}" />
+                                <TextBlock Text="Applies immediately to the whole shell." Style="{StaticResource SettingHintStyle}" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" x:Name="ThemeBox" MinWidth="160" VerticalAlignment="Center" SelectionChanged="Theme_Changed">
+                                <ComboBoxItem Content="System" Tag="System" />
+                                <ComboBoxItem Content="Light" Tag="Light" />
+                                <ComboBoxItem Content="Dark" Tag="Dark" />
+                            </ComboBox>
+                        </Grid>
+                        <muxc:InfoBar x:Name="ThemeNote" IsOpen="False" IsClosable="False"
+                                      Severity="Informational" Title="Partly applied" />
+                    </StackPanel>
+                </muxc:Expander>
+
+                <TextBlock Text="1C" Style="{StaticResource PanelTitleStyle}" Margin="0,10,0,2" />
+
+                <muxc:Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" IsExpanded="True">
+                    <muxc:Expander.Header>
+                        <StackPanel Padding="0,6,0,6">
+                            <TextBlock Text="Workers and COM" FontSize="14" />
+                            <TextBlock Text="One COM connection per process. These numbers decide how many processes exist."
+                                       Style="{StaticResource SettingHintStyle}" />
+                        </StackPanel>
+                    </muxc:Expander.Header>
+                    <StackPanel Spacing="16" Padding="0,8,0,8">
+                        <Grid Style="{StaticResource SettingRowStyle}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Max workers" Style="{StaticResource SettingNameStyle}" />
+                                <TextBlock Text="Upper bound on live oscript processes." Style="{StaticResource SettingHintStyle}" />
+                            </StackPanel>
+                            <NumberBox Grid.Column="1" x:Name="MaxWorkers" Width="150" VerticalAlignment="Center"
+                                       Minimum="1" Maximum="16" SpinButtonPlacementMode="Inline" ValueChanged="Number_Changed" />
+                        </Grid>
+
+                        <Grid Style="{StaticResource SettingRowStyle}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Cold-read workers" Style="{StaticResource SettingNameStyle}" />
+                                <TextBlock Text="Lanes used for a first full read. Four measured best on a single machine."
+                                           Style="{StaticResource SettingHintStyle}" />
+                            </StackPanel>
+                            <NumberBox Grid.Column="1" x:Name="ColdWorkers" Width="150" VerticalAlignment="Center"
+                                       Minimum="1" Maximum="8" SpinButtonPlacementMode="Inline" ValueChanged="Number_Changed" />
+                        </Grid>
+
+                        <Grid Style="{StaticResource SettingRowStyle}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Worker memory budget (MB)" Style="{StaticResource SettingNameStyle}" />
+                                <TextBlock Text="A worker over budget is recycled between reads, never mid-read."
+                                           Style="{StaticResource SettingHintStyle}" />
+                            </StackPanel>
+                            <NumberBox Grid.Column="1" x:Name="MemBudget" Width="150" VerticalAlignment="Center"
+                                       Minimum="128" Maximum="4096" SmallChange="64"
+                                       SpinButtonPlacementMode="Inline" ValueChanged="Number_Changed" />
+                        </Grid>
+
+                        <Grid Style="{StaticResource SettingRowStyle}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Default COM version" Style="{StaticResource SettingNameStyle}" />
+                                <TextBlock Text="Per-base overrides win. A mismatch is what breaks Production-01 today."
+                                           Style="{StaticResource SettingHintStyle}" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" x:Name="ComVersionBox" MinWidth="160" VerticalAlignment="Center" SelectionChanged="Combo_Changed">
+                                <ComboBoxItem Content="8.3.15" />
+                                <ComboBoxItem Content="8.3.20" />
+                                <ComboBoxItem Content="8.3.22" />
+                                <ComboBoxItem Content="8.3.24" />
+                                <ComboBoxItem Content="8.3.25" />
+                            </ComboBox>
+                        </Grid>
+
+                        <Grid Style="{StaticResource SettingRowStyle}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Auto-restart workers" Style="{StaticResource SettingNameStyle}" />
+                                <TextBlock Text="Restart on crash, three failed health probes, or memory over budget."
+                                           Style="{StaticResource SettingHintStyle}" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" x:Name="AutoRestart" OnContent="" OffContent=""
+                                          MinWidth="0" VerticalAlignment="Center" Toggled="Toggle_Changed" />
+                        </Grid>
+                    </StackPanel>
+                </muxc:Expander>
+
+                <TextBlock Text="SYNC" Style="{StaticResource PanelTitleStyle}" Margin="0,10,0,2" />
+
+                <muxc:Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <muxc:Expander.Header>
+                        <StackPanel Padding="0,6,0,6">
+                            <TextBlock Text="Read behaviour" FontSize="14" />
+                            <TextBlock Text="How aggressively the connector pulls from 1C" Style="{StaticResource SettingHintStyle}" />
+                        </StackPanel>
+                    </muxc:Expander.Header>
+                    <StackPanel Spacing="16" Padding="0,8,0,8">
+                        <Grid Style="{StaticResource SettingRowStyle}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Poll interval (seconds)" Style="{StaticResource SettingNameStyle}" />
+                                <TextBlock Text="Seconds between change probes per base." Style="{StaticResource SettingHintStyle}" />
+                            </StackPanel>
+                            <NumberBox Grid.Column="1" x:Name="PollInterval" Width="150" VerticalAlignment="Center"
+                                       Minimum="10" Maximum="3600" SmallChange="10"
+                                       SpinButtonPlacementMode="Inline" ValueChanged="Number_Changed" />
+                        </Grid>
+
+                        <Grid Style="{StaticResource SettingRowStyle}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Bulk mode" Style="{StaticResource SettingNameStyle}" />
+                                <TextBlock Text="Serialize whole value tables to XDTO XML instead of paging JSON."
+                                           Style="{StaticResource SettingHintStyle}" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" x:Name="BulkMode" OnContent="" OffContent=""
+                                          MinWidth="0" VerticalAlignment="Center" Toggled="Toggle_Changed" />
+                        </Grid>
+
+                        <Grid Style="{StaticResource SettingRowStyle}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Parallel reads" Style="{StaticResource SettingNameStyle}" />
+                                <TextBlock Text="Split a cold read into date slices across worker processes."
+                                           Style="{StaticResource SettingHintStyle}" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" x:Name="ParallelReads" OnContent="" OffContent=""
+                                          MinWidth="0" VerticalAlignment="Center" Toggled="Toggle_Changed" />
+                        </Grid>
+                    </StackPanel>
+                </muxc:Expander>
+
+                <TextBlock Text="LOGGING" Style="{StaticResource PanelTitleStyle}" Margin="0,10,0,2" />
+
+                <muxc:Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <muxc:Expander.Header>
+                        <StackPanel Padding="0,6,0,6">
+                            <TextBlock Text="Diagnostics" FontSize="14" />
+                            <TextBlock Text="What is kept on this machine and for how long" Style="{StaticResource SettingHintStyle}" />
+                        </StackPanel>
+                    </muxc:Expander.Header>
+                    <StackPanel Spacing="16" Padding="0,8,0,8">
+                        <Grid Style="{StaticResource SettingRowStyle}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Log level" Style="{StaticResource SettingNameStyle}" VerticalAlignment="Center" />
+                            <ComboBox Grid.Column="1" x:Name="LogLevelBox" MinWidth="160" VerticalAlignment="Center" SelectionChanged="Combo_Changed">
+                                <ComboBoxItem Content="Error" />
+                                <ComboBoxItem Content="Warning" />
+                                <ComboBoxItem Content="Info" />
+                                <ComboBoxItem Content="Debug" />
+                            </ComboBox>
+                        </Grid>
+
+                        <Grid Style="{StaticResource SettingRowStyle}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Retention (days)" Style="{StaticResource SettingNameStyle}" VerticalAlignment="Center" />
+                            <NumberBox Grid.Column="1" x:Name="Retention" Width="150" VerticalAlignment="Center"
+                                       Minimum="1" Maximum="90" SpinButtonPlacementMode="Inline" ValueChanged="Number_Changed" />
+                        </Grid>
+
+                        <Grid Style="{StaticResource SettingRowStyle}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Export logs" Style="{StaticResource SettingNameStyle}" />
+                                <TextBlock Text="Zip the last retention window for support." Style="{StaticResource SettingHintStyle}" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="Export" MinWidth="110" VerticalAlignment="Center" Click="Export_Click" />
+                        </Grid>
+                    </StackPanel>
+                </muxc:Expander>
+
+                <muxc:InfoBar IsOpen="True" IsClosable="False" Severity="Informational" Margin="0,12,0,0"
+                              Title="Prototype"
+                              Message="Settings live in memory for this session only. Nothing here touches the production connector, 1C, or any bank." />
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

@@ -1,0 +1,173 @@
+<Page
+    x:Class="AibaShell.Views.SyncPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    xmlns:svc="using:AibaShell.Services">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" Padding="24,18,24,10">
+            <StackPanel>
+                <TextBlock Text="Sync" Style="{StaticResource PageTitleStyle}" />
+                <TextBlock x:Name="SubtitleText" Style="{StaticResource PageSubtitleStyle}" />
+            </StackPanel>
+            <CommandBar HorizontalAlignment="Right" DefaultLabelPosition="Right" Background="Transparent" IsOpen="False">
+                <AppBarButton Icon="Play" Label="Start" Click="Start_Click" />
+                <AppBarButton Icon="Stop" Label="Stop" Click="Stop_Click" />
+                <AppBarSeparator />
+                <AppBarButton Icon="Setting" Label="Lanes" Click="Lanes_Click" />
+            </CommandBar>
+        </Grid>
+
+        <ScrollViewer Grid.Row="1" Padding="24,0,24,24" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="12">
+
+                <!-- Primary sync readout -->
+                <Border Style="{StaticResource PanelStyle}" Padding="20,18,20,18">
+                    <StackPanel Spacing="12">
+                        <Grid>
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <muxc:ProgressRing x:Name="Ring" Width="16" Height="16" IsActive="True" />
+                                    <TextBlock x:Name="ActiveBaseText" FontSize="20" FontWeight="SemiBold" />
+                                </StackPanel>
+                                <TextBlock x:Name="ActiveObjectText" Style="{StaticResource MonoTextStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="0,4,0,0" />
+                            </StackPanel>
+                            <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="28">
+                                <StackPanel>
+                                    <TextBlock x:Name="TotalRateText" Style="{StaticResource MetricValueStyle}" HorizontalAlignment="Right" />
+                                    <TextBlock Text="rows / sec (all lanes)" Style="{StaticResource MetricLabelStyle}" HorizontalAlignment="Right" />
+                                </StackPanel>
+                                <StackPanel>
+                                    <TextBlock x:Name="RemainingText" Style="{StaticResource MetricValueStyle}" HorizontalAlignment="Right" />
+                                    <TextBlock Text="estimated remaining" Style="{StaticResource MetricLabelStyle}" HorizontalAlignment="Right" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Grid>
+
+                        <muxc:ProgressBar x:Name="MainBar" Maximum="100" Height="6" />
+
+                        <Grid ColumnSpacing="24">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock x:Name="OverallProgressText" FontSize="15" FontWeight="SemiBold" />
+                                <TextBlock Text="progress" Style="{StaticResource MetricLabelStyle}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock x:Name="TotalRowsText" FontSize="15" FontWeight="SemiBold" />
+                                <TextBlock Text="rows processed" Style="{StaticResource MetricLabelStyle}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock x:Name="RunElapsedText" FontSize="15" FontWeight="SemiBold" />
+                                <TextBlock Text="elapsed" Style="{StaticResource MetricLabelStyle}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="3">
+                                <TextBlock x:Name="ReadStrategyText" FontSize="15" FontWeight="SemiBold" Text="bulk XDTO" />
+                                <TextBlock Text="read strategy" Style="{StaticResource MetricLabelStyle}" />
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Worker lanes: the reason parallel cold reads are worth the complexity -->
+                <Border Style="{StaticResource PanelStyle}" Padding="20,16,20,16">
+                    <StackPanel Spacing="10">
+                        <Grid>
+                            <TextBlock Text="WORKER LANES" Style="{StaticResource PanelTitleStyle}" />
+                            <TextBlock x:Name="LaneSummaryText" HorizontalAlignment="Right" FontSize="12"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </Grid>
+
+                        <ItemsControl x:Name="LaneList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="svc:SyncLane">
+                                    <Grid ColumnSpacing="16" Padding="0,8,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="110" />
+                                            <ColumnDefinition Width="120" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="110" />
+                                            <ColumnDefinition Width="110" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                            <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                                                     Fill="{x:Bind Status, Mode=OneWay, Converter={StaticResource StatusBrush}}" />
+                                            <TextBlock Text="{x:Bind Name}" FontSize="13" FontWeight="SemiBold" />
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock Text="{x:Bind Slice}" Style="{StaticResource MonoTextStyle}" />
+                                            <TextBlock Text="{x:Bind State, Mode=OneWay}" FontSize="11"
+                                                       Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                        </StackPanel>
+
+                                        <muxc:ProgressBar Grid.Column="2" Maximum="100" Height="4" VerticalAlignment="Center"
+                                                          Value="{x:Bind Progress, Mode=OneWay}" />
+
+                                        <TextBlock Grid.Column="3" Text="{x:Bind RowsText, Mode=OneWay}"
+                                                   Style="{StaticResource MonoTextStyle}" HorizontalAlignment="Right"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <TextBlock Grid.Column="4" Text="{x:Bind RowsPerSecondText, Mode=OneWay}"
+                                                   Style="{StaticResource MonoTextStyle}" HorizontalAlignment="Right" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <!-- Queue of bases waiting behind the active one -->
+                <Border Style="{StaticResource PanelStyle}" Padding="20,16,20,8">
+                    <StackPanel>
+                        <TextBlock Text="SYNC QUEUE" Style="{StaticResource PanelTitleStyle}" />
+                        <ListView x:Name="QueueList" SelectionMode="None" Padding="0">
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem">
+                                    <Setter Property="Padding" Value="0,2,0,2" />
+                                    <Setter Property="MinHeight" Value="0" />
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                </Style>
+                            </ListView.ItemContainerStyle>
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="svc:InfoBase">
+                                    <Grid ColumnSpacing="12" Padding="0,6,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="10" />
+                                            <ColumnDefinition Width="180" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="120" />
+                                            <ColumnDefinition Width="100" />
+                                        </Grid.ColumnDefinitions>
+                                        <Ellipse Grid.Column="0" Width="8" Height="8" VerticalAlignment="Center"
+                                                 Fill="{x:Bind Status, Mode=OneWay, Converter={StaticResource StatusBrush}}" />
+                                        <TextBlock Grid.Column="1" Text="{x:Bind Name}" Style="{StaticResource CellTextStyle}" />
+                                        <TextBlock Grid.Column="2" Text="{x:Bind CurrentObject, Mode=OneWay}"
+                                                   Style="{StaticResource MonoTextStyle}"
+                                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                        <TextBlock Grid.Column="3" Text="{x:Bind ProgressText, Mode=OneWay}"
+                                                   Style="{StaticResource MonoTextStyle}" HorizontalAlignment="Right" />
+                                        <TextBlock Grid.Column="4" Text="{x:Bind RowsPerSecondText, Mode=OneWay}"
+                                                   Style="{StaticResource MonoTextStyle}" HorizontalAlignment="Right" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>
