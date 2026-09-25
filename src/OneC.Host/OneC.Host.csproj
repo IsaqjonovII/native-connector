@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>OneC.Host</AssemblyName>
+    <RootNamespace>OneC.Host</RootNamespace>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <NoWarn>CA1416</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\OneC.Interop\OneC.Interop.csproj" />
+    <ProjectReference Include="..\OneC.Sessions\OneC.Sessions.csproj" />
+    <ProjectReference Include="..\OneC.Ipc\OneC.Ipc.csproj" />
+    <!-- Only for the event-log oracle (EventLogExport): the feed itself is served by the supervisor. -->
+    <ProjectReference Include="..\OneC.EventLog\OneC.EventLog.csproj" />
+  </ItemGroup>
+</Project>

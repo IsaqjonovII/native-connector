@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Build settings proven on this machine by the WinUI prototype: WindowsAppSDK 2.4.0 with
+       BuildTools 10.0.26100.4654 (1.6/1.7 failed with MSB4062 ExpandPriContent), unpackaged,
+       self-contained. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>OneC.Desktop</RootNamespace>
+    <AssemblyName>AIBA.Connector</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <UseWinUI>true</UseWinUI>
+    <EnableMsixTooling>false</EnableMsixTooling>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
+    <PublishReadyToRun>false</PublishReadyToRun>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <DefaultLanguage>en-US</DefaultLanguage>
+    <NoWarn>CA1416</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.4.0" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.4654" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- No COM, no 1C: the app talks only to the supervisor's HTTP edge (DECISIONS D28).
+         Everything that is not UI lives in OneC.Desktop.Core so it can be tested. -->
+    <ProjectReference Include="..\OneC.Desktop.Core\OneC.Desktop.Core.csproj" />
+  </ItemGroup>
+</Project>

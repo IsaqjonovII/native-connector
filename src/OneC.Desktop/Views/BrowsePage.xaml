@@ -1,0 +1,65 @@
+<Page
+    x:Class="OneC.Desktop.Views.BrowsePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:c="using:OneC.Desktop.Controls">
+
+    <Grid Padding="28,20,28,20" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0">
+            <TextBlock Text="Browse data" Style="{StaticResource PageTitleStyle}" />
+            <TextBlock Style="{StaticResource PageSubtitleStyle}"
+                       Text="Read any 1C table. Nothing is changed in 1C from this screen." />
+        </StackPanel>
+
+        <!-- Query form: wraps on narrow windows instead of clipping. -->
+        <VariableSizedWrapGrid Grid.Row="1" Orientation="Horizontal" ItemHeight="64" ItemWidth="10">
+            <!-- Spans are in 10 px units and include the 12 px gap: total 106 = 1 060 px, which
+                 fits one line from a ~1 300 px window and wraps cleanly below that. -->
+            <ComboBox x:Name="BaseBox" Header="Infobase" Width="168" Margin="0,0,12,0"
+                      VariableSizedWrapGrid.ColumnSpan="18" />
+            <AutoSuggestBox x:Name="EntityBox" Header="Table" Width="288" Margin="0,0,12,0"
+                            PlaceholderText="Справочник.Номенклатура"
+                            TextChanged="Entity_TextChanged" SuggestionChosen="Entity_SuggestionChosen"
+                            VariableSizedWrapGrid.ColumnSpan="30" />
+            <TextBox x:Name="FieldsBox" Header="Columns (comma separated)" Width="298" Margin="0,0,12,0"
+                     PlaceholderText="Наименование, Код" VariableSizedWrapGrid.ColumnSpan="31" />
+            <NumberBox x:Name="LimitBox" Header="Rows" Width="98" Margin="0,0,12,0" Minimum="1" Maximum="100000"
+                       Value="100" SpinButtonPlacementMode="Compact" VariableSizedWrapGrid.ColumnSpan="11" />
+            <ComboBox x:Name="RefsBox" Header="Links shown as" Width="148" Margin="0,0,12,0" SelectedIndex="0"
+                      VariableSizedWrapGrid.ColumnSpan="16">
+                <x:String>Names</x:String>
+                <x:String>IDs (GUID)</x:String>
+                <x:String>Names and IDs</x:String>
+            </ComboBox>
+        </VariableSizedWrapGrid>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="12">
+            <Button x:Name="RunButton" Click="Run_Click" Style="{StaticResource AccentButtonStyle}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="&#xE768;" FontSize="14" />
+                    <TextBlock Text="Read" />
+                </StackPanel>
+                <Button.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="Enter" Modifiers="Control" />
+                </Button.KeyboardAccelerators>
+            </Button>
+            <Button x:Name="CancelButton" Content="Stop" Click="Cancel_Click" IsEnabled="False" />
+            <ProgressRing x:Name="Busy" Width="18" Height="18" IsActive="False" />
+            <TextBlock x:Name="Summary" VerticalAlignment="Center" Style="{StaticResource MetricLabelStyle}" />
+        </StackPanel>
+
+        <InfoBar x:Name="Message" Grid.Row="3" IsOpen="False" IsClosable="True" />
+
+        <Border Grid.Row="4" Style="{StaticResource PanelStyle}" Padding="0">
+            <c:ResultTable x:Name="Table" EmptyText="Choose an infobase and a table, then press Read (Ctrl+Enter)." />
+        </Border>
+    </Grid>
+</Page>

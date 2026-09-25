@@ -1,0 +1,29 @@
+<Page
+    x:Class="OneC.Desktop.Views.ActivityPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:c="using:OneC.Desktop.Controls">
+
+    <Grid Padding="28,20,28,20" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0">
+            <TextBlock Text="Activity" Style="{StaticResource PageTitleStyle}" />
+            <TextBlock Style="{StaticResource PageSubtitleStyle}"
+                       Text="Recent requests to 1C and what the engine did. Updates every 2 seconds." />
+        </StackPanel>
+
+        <SelectorBar x:Name="Tabs" Grid.Row="1" SelectionChanged="Tabs_SelectionChanged">
+            <SelectorBarItem x:Name="RequestsTab" Text="Requests" IsSelected="True" />
+            <SelectorBarItem x:Name="EventsTab" Text="Engine events" />
+        </SelectorBar>
+
+        <Border Grid.Row="2" Style="{StaticResource PanelStyle}" Padding="0">
+            <c:ResultTable x:Name="Table" EmptyText="Nothing yet." />
+        </Border>
+    </Grid>
+</Page>

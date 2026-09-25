@@ -1,0 +1,11 @@
+syntax = "proto3";
+option csharp_namespace = "IpcBench";
+
+// One unary call carrying the same JSON body the other transports carry, so the comparison
+// is transport cost, not serializer cost.
+service Bench {
+  rpc Call (Req) returns (Resp);
+}
+
+message Req { int32 rows = 1; }
+message Resp { bytes json = 1; }

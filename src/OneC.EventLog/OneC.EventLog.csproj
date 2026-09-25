@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <NoWarn>CA1416</NoWarn>
+  </PropertyGroup>
+  <!-- Reads 1C's event-log files. No COM, no 1C runtime: the supervisor serves it directly
+       (a change feed must not need a session, and must not create one). -->
+</Project>

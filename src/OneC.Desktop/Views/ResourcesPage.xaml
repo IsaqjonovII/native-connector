@@ -1,0 +1,61 @@
+<Page
+    x:Class="OneC.Desktop.Views.ResourcesPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:c="using:OneC.Desktop.Controls">
+
+    <Grid Padding="28,20,28,20" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" MinHeight="140" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" MinHeight="140" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0">
+            <TextBlock Text="Resources" Style="{StaticResource PageTitleStyle}" />
+            <TextBlock Style="{StaticResource PageSubtitleStyle}"
+                       Text="Memory and connections used by the 1C engine on this computer. Updates every 2 seconds." />
+        </StackPanel>
+
+        <!-- Totals: wrap on narrow windows. -->
+        <VariableSizedWrapGrid Grid.Row="1" Orientation="Horizontal" ItemWidth="190" ItemHeight="76">
+            <Border Style="{StaticResource PanelStyle}" Padding="14,10,14,10" Margin="0,0,10,0">
+                <StackPanel>
+                    <TextBlock x:Name="TotalRam" Text="–" Style="{StaticResource MetricValueStyle}" />
+                    <TextBlock Text="Memory in use" Style="{StaticResource MetricLabelStyle}" />
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource PanelStyle}" Padding="14,10,14,10" Margin="0,0,10,0">
+                <StackPanel>
+                    <TextBlock x:Name="TotalSessions" Text="–" Style="{StaticResource MetricValueStyle}" />
+                    <TextBlock Text="Open 1C sessions" Style="{StaticResource MetricLabelStyle}" />
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource PanelStyle}" Padding="14,10,14,10" Margin="0,0,10,0">
+                <StackPanel>
+                    <TextBlock x:Name="TotalHosts" Text="–" Style="{StaticResource MetricValueStyle}" />
+                    <TextBlock Text="Engine processes" Style="{StaticResource MetricLabelStyle}" />
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource PanelStyle}" Padding="14,10,14,10" Margin="0,0,10,0">
+                <StackPanel>
+                    <TextBlock x:Name="TotalRestarts" Text="–" Style="{StaticResource MetricValueStyle}" />
+                    <TextBlock Text="Engine restarts" Style="{StaticResource MetricLabelStyle}" />
+                </StackPanel>
+            </Border>
+        </VariableSizedWrapGrid>
+
+        <TextBlock Grid.Row="2" Text="Processes" Style="{StaticResource SectionTitleStyle}" />
+        <Border Grid.Row="3" Style="{StaticResource PanelStyle}" Padding="0">
+            <c:ResultTable x:Name="ProcessTable" EmptyText="The 1C engine is not running." />
+        </Border>
+
+        <TextBlock Grid.Row="4" Text="Sessions per infobase" Style="{StaticResource SectionTitleStyle}" />
+        <Border Grid.Row="5" Style="{StaticResource PanelStyle}" Padding="0">
+            <c:ResultTable x:Name="PoolTable" EmptyText="No sessions open. Sessions open when an infobase is used and close after 5 idle minutes." />
+        </Border>
+    </Grid>
+</Page>

@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>OneC.Supervisor</AssemblyName>
+    <RootNamespace>OneC.Supervisor</RootNamespace>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <NoWarn>CA1416</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The HTTP edge (DECISIONS D28) lives only here: one Kestrel per machine, not per host. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Interop only for PlatformCatalog (reads files, no COM). The supervisor must never
+         call ComActivator: a process that loads comcntr is a host, not a supervisor. -->
+    <ProjectReference Include="..\OneC.Interop\OneC.Interop.csproj" />
+    <ProjectReference Include="..\OneC.Sessions\OneC.Sessions.csproj" />
+    <ProjectReference Include="..\OneC.Ipc\OneC.Ipc.csproj" />
+    <!-- The change feed reads 1C's event-log files; no host, no session (D36). -->
+    <ProjectReference Include="..\OneC.EventLog\OneC.EventLog.csproj" />
+    <!-- 1C → cloud sync runs here, next to the change feed (D39). -->
+    <ProjectReference Include="..\OneC.Sync\OneC.Sync.csproj" />
+  </ItemGroup>
+</Project>

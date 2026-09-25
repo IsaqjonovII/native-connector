@@ -5,6 +5,9 @@ with connections that stay up under load instead of dying.
 
 Private. Nothing here runs in production yet.
 
+**Agents: start with `AGENT.md`**, then `MIGRATION_STATUS.md`, `MIGRATION_PLAN.md` and
+`DECISIONS.md`. Those four files are the source of truth for the rewrite.
+
 ## What's in here
 
 | Path | What |
@@ -27,9 +30,9 @@ From `research/com-threading-probe/README.md`, all measured against live KAN on 
    objects kills the process with `0xC0000005` after ~40 queries. Releasing every COM object
    on the thread that created it: 160 queries clean, exit 0, and roughly twice the throughput.
    This is structural in OneScript (`COMWrapperContext.Finalize`) and fixable in C#.
-5. **Two constraints no language removes:** `comcntr` cannot be recreated in-process after
-   teardown (`TYPE_E_CANTLOADLIBRARY`), and there is exactly one registry slot per machine
-   for the platform version — every version ships the same CLSID.
+5. **`comcntr` cannot be recreated in-process after teardown** (`TYPE_E_CANTLOADLIBRARY`).
+   The registry has one slot per machine for the platform version — but that stopped being
+   a constraint: explicit-path activation ignores the registry entirely (`DECISIONS.md` D04).
 
 ## Rules
 

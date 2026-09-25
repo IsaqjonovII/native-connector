@@ -1,0 +1,16 @@
+label,workingSetMb,privateBytesMb,managedHeapMb,gcCommittedMb,gen0,gen1,gen2,threads,handles,cpuSeconds,liveComRefs,sessions
+00 process start,30,9,0,1,2,2,2,8,228,0,09,0,0
+01 host + connector,35,9,0,0,4,4,4,12,264,0,12,1,0
+02 FILE:bilim warm K=1,303,242,0,1,6,6,6,17,424,1,83,1,1
+02 FILE:bilim warm K=2,513,458,0,1,8,8,8,21,466,3,47,1,2
+02 FILE:bilim warm K=4,931,886,0,1,10,10,10,23,527,6,73,1,4
+03 FILE:bilim after workload (160 reads, 789 ms),944,898,0,2,12,12,12,23,526,7,03,1,4
+04 FILE:bilim after idle sweep (retired 0),92,52,0,2,14,14,14,18,375,7,78,1,0
+05 FILE:bilim after drain,88,45,0,0,16,16,16,18,374,7,80,1,0
+02 SERVER:kansler warm K=1,164,106,0,0,18,18,18,24,447,8,45,1,1
+02 SERVER:kansler warm K=2,213,155,0,1,20,20,20,25,461,9,12,1,2
+02 SERVER:kansler warm K=4,313,256,0,1,22,22,22,27,486,10,45,1,4
+03 SERVER:kansler after workload (160 reads, 259 ms),325,266,0,4,24,24,24,27,486,10,73,1,4
+04 SERVER:kansler after idle sweep (retired 4),101,56,0,4,26,26,26,22,409,11,05,1,0
+05 SERVER:kansler after drain,97,53,0,1,28,28,28,22,408,11,05,1,0
+06 after host shutdown,97,54,0,1,30,30,30,22,407,11,06,0,0
