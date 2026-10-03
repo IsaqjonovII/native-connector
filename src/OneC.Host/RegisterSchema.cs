@@ -17,9 +17,14 @@ public sealed record RegisterSchema(
     bool Subconto,
     IReadOnlyList<AttributeShape> Columns)
 {
+    /// <summary>The register's dimensions (<c>Измерения</c>), in metadata order — the natural key of an independent information register (§8).</summary>
+    public IReadOnlyList<string> Dimensions { get; init; } = Array.Empty<string>();
+
     public bool Has(string column) => Columns.Any(c => c.Name == column);
     public bool Periodic => Has("Период");
     public bool Recorded => Has("Регистратор") && Has("НомерСтроки");
+    /// <summary>An information register written on its own, not by a document: no recorder, keyed by Период + dimensions.</summary>
+    public bool Independent => Kind == RegisterKind.Information && !Recorded;
 }
 
 /// <summary>Register columns, read once per base and register (<see cref="SchemaCache"/>).</summary>
@@ -46,7 +51,15 @@ public static class RegisterSchemas
     {
         using var scope = new ComScope();
         var md = scope.Track(Dispatch.Get(ctx.Connection, "Метаданные", ctx.Error), "Метаданные");
-        MetadataShapes.Find(ctx, scope, md, Collection(kind), name, "register");
+        var meta = MetadataShapes.Find(ctx, scope, md, Collection(kind), name, "register");
+        var dims = scope.Track(Dispatch.Get(meta, "Измерения", ctx.Error), "Измерения");
+        int nd = Dispatch.CallInt(dims, "Количество", ctx.Error);
+        var dimensions = new List<string>(nd);
+        for (int i = 0; i < nd; i++)
+        {
+            using var ds = new ComScope();
+            dimensions.Add(Dispatch.GetString(ds.Track(Dispatch.Call(dims, "Получить", ctx.Error, i), "Измерение"), "Имя", ctx.Error)!);
+        }
 
         string table = $"{Prefix(kind)}.{name}";
         string source = table;
@@ -64,7 +77,7 @@ public static class RegisterSchemas
             try { Probe(ctx, empty); source = vt; probe = empty; subconto = true; }
             catch (OneCException e) when (e.Layer == OneCLayer.Runtime) { }
         }
-        return new RegisterSchema(kind, name, table, source, subconto, Columns(ctx, md, probe));
+        return new RegisterSchema(kind, name, table, source, subconto, Columns(ctx, md, probe)) { Dimensions = dimensions };
     }
 
     private static void Probe(SessionContext ctx, string source)
@@ -75,7 +88,7 @@ public static class RegisterSchemas
     }
 
     /// <summary>Names and types of <c>ВЫБРАТЬ *</c> — no rows are read.</summary>
-    private static List<AttributeShape> Columns(SessionContext ctx, object md, string source)
+    internal static List<AttributeShape> Columns(SessionContext ctx, object md, string source)
     {
         using var scope = new ComScope();
         var q = QueryKit.NewQuery(ctx, scope, $"ВЫБРАТЬ ПЕРВЫЕ 0 * ИЗ {source}");

@@ -1,0 +1,6 @@
+  Passed OneC.Tests.SyncStateTests.AnIndependentRegisterRefreshUploadsOnlyChangedRowsAndFindsRemovedOnes [1 s]
+  Passed OneC.Tests.SyncV2LiveTests.AnIndependentRegisterRefreshSendsNothingWhenNothingChanged [44 s]
+ bilim СтатусыДокументов: 68 rows; snapshot 1,7 s; refresh 0,1 s = 699 rows/s scanned, sent 0, outcome done 0 skipped 1
+ kansler РегламентированныйПроизводственныйКалендарь: 4749 rows; snapshot 0,8 s; refresh 0,4 s = 10651 rows/s scanned, sent 0, outcome done 0 skipped 1
+ kansler ЗначенияСвойствОбъектов: 23521 rows; snapshot 4,6 s; refresh 5,0 s = 4695 rows/s scanned, sent 0, outcome done 0 skipped 1
+ kansler КурсыВалют: 4387 rows; snapshot 0,4 s; refresh 0,4 s = 10615 rows/s scanned, sent 0, outcome done 0 skipped 1

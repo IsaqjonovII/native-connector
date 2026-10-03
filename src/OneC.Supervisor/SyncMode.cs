@@ -1,52 +1,118 @@
-using System.Diagnostics;
+using System.Globalization;
+using System.Text.Json.Nodes;
+using OneC.EventLog;
 using OneC.Sessions;
-using OneC.Sync;
+using OneC.Sync.Abstractions;
+using OneC.Sync.Stub;
+using OneC.SyncState;
+using OneC.Sync.Engine;
+using OneC.Sync.Source;
 
 namespace OneC.Supervisor;
 
 /// <summary>
-/// <c>OneC.Supervisor sync</c>: hosts + a local stub backend (D39) + sync passes, then 1C's row
-/// counts next to the stub's. Nothing leaves the machine.
+/// <c>run --sync-config f.json</c>: the sync engine inside the Supervisor, controlled through
+/// <c>/v1/sync</c>. Targets allowed here (D-2): the in-memory stub, or a backend on a loopback
+/// address (the isolated local instance of S12). A shared dev backend needs the developer's go and
+/// the signed-in user's token, and is not wired here.
+/// <code>
+/// { "db": null | "path\\sync.db", "target": "stub" | "http://127.0.0.1:18041", "secrets": "…json (local target)",
+///   "bases": [ { "name": "kansler", "connectionId": "…",
+///                "tables": [ { "table": "Catalog_Банки", "name": "Банки", "family": "catalog", "isMovement": false,
+///                              "from": "2025-01-01", "refreshEveryMinutes": 60 } ] } ] }
+/// </code>
 /// </summary>
 internal static class SyncMode
 {
-    public static async Task<int> Run(List<OneCBase> bases, SupervisorOptions opt, string baseName, string[] tableNames,
-                                      DateTime? from, string statePath, int passes)
+    public static async Task<(SyncEngineHost Host, IDisposable Db)> StartAsync(Supervisor sup, IReadOnlyList<OneCBase> bases, string configPath)
     {
-        if (tableNames.Length == 0) { Console.Error.WriteLine("--tables is required"); return 1; }
-        var tables = tableNames.Select(n => SyncTable.Parse(n.Trim(), from)).ToList();
-        string oneCId = "stub-" + baseName;
-
-        using var sup = new Supervisor(opt);
-        sup.Start(bases.Where(b => b.Name == baseName).ToList());
-        await using var stub = new StubBackend();
-        await stub.StartAsync();
-        using var http = new HttpClient { BaseAddress = stub.BaseAddress, Timeout = TimeSpan.FromMinutes(5) };
-        var engine = new SyncEngine(new SupervisorSource(sup), new HttpUploadTarget(http, stub.Authorize));
-        var source = new SupervisorSource(sup);
-
-        if (File.Exists(statePath)) File.Delete(statePath);             // the stub starts empty, so does the state
-        var state = BaseState.Load(statePath);
-        for (int pass = 1; pass <= passes; pass++)
+        var cfg = JsonNode.Parse(await File.ReadAllTextAsync(configPath))!.AsObject();
+        string dbPath = (string?)cfg["db"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                                                           "AIBA", "Connector", "sync", "sync.db");
+        var db = SyncDb.Open(dbPath);
+        string targetSpec = (string?)cfg["target"] ?? "stub";
+        IBackendSyncTarget target;
+        Http = new HttpFaults { Armable = (bool?)cfg["faults"] == true && targetSpec != "stub" };
+        if (targetSpec == "stub") target = new StubSyncTarget(StubMode.V2) { KeepJson = false };
+        else if (targetSpec == "dev")
         {
-            var sw = Stopwatch.StartNew();
-            var report = await engine.RunOnceAsync(baseName, oneCId, tables, state, statePath);
-            Console.WriteLine($"pass {pass}: {sw.Elapsed.TotalSeconds:F1} s, feed events {report.FeedEvents}{(report.FeedReset ? " (reset)" : "")}");
-            foreach (var (t, (u, p, r)) in report.Tables) Console.WriteLine($"  {t}: uploaded {u}, pruned {p}, reconciled {r}");
-            foreach (var w in report.Warnings) Console.WriteLine($"  ! {w}");
+            // S12, approved for DEVELOPMENT only: every base must name its own test 1C record.
+            if (cfg["bases"]!.AsArray().Count != 1) throw new ArgumentException("sync dev target:exactly one base (one test 1C record) per run");
+            var first = cfg["bases"]!.AsArray().OfType<JsonObject>().Select(b => (string?)b["connectionId"]).FirstOrDefault();
+            if (first is not { Length: 24 }) throw new ArgumentException("sync dev target:each base needs \"connectionId\" = its test 1C record id on dev");
+            // Developer switches that must never reach the shared server.
+            if ((bool?)cfg["allowWithOldConnector"] == true) throw new ArgumentException("sync dev target:allowWithOldConnector is refused on the shared dev backend (D-1)");
+            var dev = DevBackend.Connect((string?)cfg["session"] ?? throw new ArgumentException("sync dev target:\"session\" (the app's data folder) missing"),
+                                         first, Http);
+            await DevBackend.GuardAsync(dev.Http, dev.Cloud, first);        // test-owned record, no live connector — or no start
+            target = dev.Target;
+            RebuildRefusal = (bool?)cfg["allowRebuild"] == true ? null
+                : "copying a table again deletes its rows on the shared dev backend: disabled for S12 unless the developer sets allowRebuild";
+        }
+        else
+        {
+            if (!new Uri(targetSpec).IsLoopback) throw new ArgumentException("sync target must be \"stub\", \"dev\" or a loopback URL (D-2: never production)");
+            target = (await LocalBackend.ConnectAsync(targetSpec, (string)cfg["secrets"]!, "sync")).Target;
         }
 
-        int mismatches = 0;
-        foreach (var t in tables.Where(t => t.Kind != TableKind.ChartOfAccounts))
+        var locator = new LogLocator();
+        var plans = new List<BasePlan>();
+        foreach (var b in cfg["bases"]!.AsArray().OfType<JsonObject>())
         {
-            long inOneC = await source.CountAsync(baseName, t, CancellationToken.None);
-            int inStub = stub.Count(oneCId, t.Name);
-            bool registerWindow = t.IsRegister && from is not null;      // register counts are for the whole register
-            bool same = registerWindow || inOneC == inStub;
-            if (!same) mismatches++;
-            Console.WriteLine($"{t.Name}: 1C {inOneC}{(registerWindow ? " (whole register)" : "")}, stub {inStub}{(same ? "" : "  MISMATCH")}");
+            string name = (string)b["name"]!;
+            var ob = bases.FirstOrDefault(x => x.Name == name) ?? throw new ArgumentException($"sync: base {name} is not in the base list");
+            var (dir, _) = locator.Resolve(ob.ConnectionString);
+            plans.Add(new BasePlan(name, ob.IsFile, dir, (string?)b["connectionId"] ?? name, Tables(b)));
         }
-        Console.WriteLine($"stub uploads: {stub.Uploads.Count}, bytes {stub.Uploads.Sum(u => (long)u.Bytes)}");
-        return mismatches == 0 ? 0 : 2;
+        if (Http.Armable)
+            db.FaultHook = point =>
+            {
+                // S12 failure test "restart after upload, before local completion": the target has the
+                // rows, the work item is still pending — the process dies right here.
+                if (point == "complete" && Interlocked.Exchange(ref _crashOnComplete, 0) == 1)
+                {
+                    Console.Error.WriteLine("sync: injected crash after upload, before local completion (S12 failure test)");
+                    Environment.Exit(97);
+                }
+            };
+        var host = new SyncEngineHost(db, target, new SupervisorReader(sup), plans,
+                                      options: new EngineOptions { AllowWithOldConnector = (bool?)cfg["allowWithOldConnector"] ?? false })
+        { RebuildRefusal = RebuildRefusal };
+        host.Start();
+        return (host, db);
+    }
+
+    /// <summary>
+    /// A base's tables from sync.json, as the engine must run them:
+    ///  - the table name is the backend's (<see cref="BackendTableNames"/>: <c>…Хозрасчетный_RecordType</c>),
+    ///    so rows join the old Connector's table instead of starting a second one;
+    ///  - movement = the backend's own rule for the family (documents and every register; catalogs and
+    ///    charts never): backend/1c files an independent information register as a movement table
+    ///    too, and routing must match it (<c>OrgRouter.Validate</c>) — a config saying otherwise is overridden;
+    ///  - one plan per table (a table listed twice under both spellings is one table).
+    /// </summary>
+    internal static List<TablePlan> Tables(JsonObject b) =>
+        b["tables"]!.AsArray().OfType<JsonObject>().Select(t =>
+        {
+            string family = (string)t["family"]!;
+            return new TablePlan(BackendTableNames.Of((string)t["table"]!), (string)t["name"]!, family,
+                family is not (Families.Catalog or Families.Chart),
+                t["from"] is JsonValue f ? DateTime.Parse(f.GetValue<string>(), CultureInfo.InvariantCulture) : null,
+                t["refreshEveryMinutes"] is JsonValue m ? TimeSpan.FromMinutes(m.GetValue<double>()) : null);
+        }).DistinctBy(t => t.Table, StringComparer.Ordinal).ToList();
+
+    /// <summary>The sync target's HTTP calls (timings, sizes) and the S12 fault switches.</summary>
+    public static HttpFaults Http { get; private set; } = new();
+
+    private static int _crashOnComplete;
+
+    /// <summary>Set on the shared dev target: why a rebuild (which deletes cloud rows) is refused there.</summary>
+    private static string? RebuildRefusal { get; set; }
+
+    /// <summary>Arms "exit at the next work-item completion" (S12 failure test; only with faults enabled).</summary>
+    public static void ArmCrashOnComplete()
+    {
+        if (!Http.Armable) throw new InvalidOperationException("faults are not enabled for this target");
+        Interlocked.Exchange(ref _crashOnComplete, 1);
     }
 }

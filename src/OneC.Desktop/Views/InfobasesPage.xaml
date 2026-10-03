@@ -5,24 +5,6 @@
     xmlns:c="using:OneC.Desktop.Controls">
 
     <Grid Padding="28,20,28,20" RowSpacing="12">
-        <VisualStateManager.VisualStateGroups>
-            <VisualStateGroup>
-                <VisualState x:Name="Wide">
-                    <VisualState.StateTriggers>
-                        <AdaptiveTrigger MinWindowWidth="1180" />
-                    </VisualState.StateTriggers>
-                </VisualState>
-                <VisualState x:Name="Narrow">
-                    <VisualState.StateTriggers>
-                        <AdaptiveTrigger MinWindowWidth="0" />
-                    </VisualState.StateTriggers>
-                    <VisualState.Setters>
-                        <Setter Target="ImportGroup.(Grid.Row)" Value="1" />
-                        <Setter Target="ImportGroup.(Grid.Column)" Value="0" />
-                    </VisualState.Setters>
-                </VisualState>
-            </VisualStateGroup>
-        </VisualStateManager.VisualStateGroups>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -32,43 +14,39 @@
 
         <StackPanel Grid.Row="0">
             <TextBlock Text="Infobases" Style="{StaticResource PageTitleStyle}" />
-            <TextBlock Style="{StaticResource PageSubtitleStyle}"
-                       Text="The 1C databases this computer connects to. Passwords are stored encrypted for your Windows account only." />
+            <TextBlock x:Name="Subtitle" Style="{StaticResource PageSubtitleStyle}"
+                       Text="The 1C databases of the company chosen at the top." />
         </StackPanel>
 
-        <!-- Two groups; on a narrow window the import group moves to its own line instead of
-             running off the edge (seen at 900 px). -->
-        <Grid Grid.Row="1" ColumnSpacing="8" RowSpacing="8">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
+        <!-- As in the old Connector: the company comes from the header, "Add infobase" picks one of
+             this computer's 1C connections and adds it to that company. -->
+        <!-- Deleting lives in each row's "…" menu (it asks first and says it can't be undone). -->
+        <Button x:Name="AddButton" Grid.Row="1" Click="Add_Click" Style="{StaticResource AccentButtonStyle}" IsEnabled="False">
             <StackPanel Orientation="Horizontal" Spacing="8">
-                <Button x:Name="AddButton" Click="Add_Click" Style="{StaticResource AccentButtonStyle}">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <FontIcon Glyph="&#xE710;" FontSize="14" />
-                        <TextBlock Text="Add infobase" />
-                    </StackPanel>
-                </Button>
-                <Button x:Name="EditButton" Content="Edit" Click="Edit_Click" IsEnabled="False" />
-                <Button x:Name="TestButton" Content="Test connection" Click="Test_Click" IsEnabled="False" />
-                <Button x:Name="RemoveButton" Content="Remove" Click="Remove_Click" IsEnabled="False" />
+                <FontIcon Glyph="&#xE710;" FontSize="14" />
+                <TextBlock Text="Add infobase" />
             </StackPanel>
-            <StackPanel x:Name="ImportGroup" Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                <Button x:Name="ImportConnectorButton" Content="Import from AIBA Connector" Click="ImportConnector_Click"
-                        ToolTipService.ToolTip="Copy the infobases the current AIBA Connector uses. The Connector's own settings are not changed." />
-                <Button x:Name="ImportButton" Content="Import from file…" Click="Import_Click" />
-            </StackPanel>
-        </Grid>
+        </Button>
 
         <InfoBar x:Name="Message" Grid.Row="2" IsOpen="False" IsClosable="True" />
 
-        <Border Grid.Row="3" Style="{StaticResource PanelStyle}" Padding="0">
-            <c:ResultTable x:Name="Table" EmptyText="No infobases yet. Use “Add infobase” to connect one." />
-        </Border>
+        <!-- One card per infobase (a company has a handful): who, sync, this computer, next step. -->
+        <Grid Grid.Row="3">
+            <ScrollViewer x:Name="CardsScroll" VerticalScrollBarVisibility="Auto" Padding="0,0,4,0">
+                <!-- Add/delete animation is switched on in code once the page is shown, so coming
+                     back to the page doesn't replay it over every card. -->
+                <StackPanel x:Name="Cards" Spacing="8" />
+            </ScrollViewer>
+            <StackPanel x:Name="Empty" Spacing="6" MaxWidth="420" HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Visibility="Collapsed">
+                <FontIcon Glyph="&#xE8F1;" FontSize="32" Margin="0,0,0,4" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                <TextBlock x:Name="EmptyTitle" FontSize="16" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap"
+                           Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                <TextBlock x:Name="EmptyText" FontSize="14" TextAlignment="Center" TextWrapping="Wrap"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Button x:Name="EmptyButton" Style="{StaticResource AccentButtonStyle}" HorizontalAlignment="Center"
+                        Margin="0,8,0,0" Click="EmptyButton_Click" />
+            </StackPanel>
+        </Grid>
     </Grid>
 </Page>

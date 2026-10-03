@@ -193,7 +193,7 @@ public class DocumentLiveTests
         if (!_f.Available || _f.Server is null) return;
         string b = _f.Server.Name;
         const string Doc = "РеализацияТоваровУслуг";
-        if (SchemaOf(b, Doc) is null) return;
+        if (Gate.Skip(SchemaOf(b, Doc) is null, $"{b} has no {Doc}")) return;
 
         // A window with a few hundred documents: the two weeks before the 300th newest one
         // (the newest dates can be a handful of mistyped future documents).
@@ -239,7 +239,7 @@ public class DocumentLiveTests
         if (!_f.Available || _f.Server is null) return;
         string b = _f.Server.Name;
         const string Doc = "РеализацияТоваровУслуг";
-        if (SchemaOf(b, Doc) is null) return;
+        if (Gate.Skip(SchemaOf(b, Doc) is null, $"{b} has no {Doc}")) return;
 
         var posted = Svc.List(b, new DocumentQuery { Document = Doc, Limit = 50, SkipTotal = true, Tabular = false,
                                                      Filters = new Dictionary<string, object?> { ["posted"] = "true" } });
@@ -270,6 +270,7 @@ public class DocumentLiveTests
     {
         if (!_f.Available || _f.Server is null) return;
         string b = _f.Server.Name;
+        int compared = 0;
         foreach (var (a, c) in new[] { ("ПоступлениеНаРасчетныйСчет", "ПлатежноеПоручениеВходящее"), ("СписаниеСРасчетногоСчета", "ПлатежноеПоручениеИсходящее") })
         {
             string real = SchemaOf(b, a) is not null ? a : c, alias = real == a ? c : a;
@@ -279,7 +280,9 @@ public class DocumentLiveTests
             var direct = Svc.List(b, q with { Document = real });
             Assert.Equal(real, viaAlias.Document);
             Assert.Equal(JsonSerializer.Serialize(direct.Rows, Json), JsonSerializer.Serialize(viaAlias.Rows, Json));
+            compared++;
         }
+        Gate.Skip(compared == 0, $"{b} has no bank document type to reach through the other configuration's name");
     }
 
     /// <summary>By id carries every tabular section, empty ones as []; the list only non-empty ones.</summary>
@@ -290,7 +293,7 @@ public class DocumentLiveTests
         string b = _f.Server.Name;
         const string Doc = "РеализацияТоваровУслуг";
         var s = SchemaOf(b, Doc);
-        if (s is null) return;
+        if (s is null) { Gate.Skip(true, $"{b} has no {Doc}"); return; }
         var row = Svc.List(b, new DocumentQuery { Document = Doc, Limit = 1, SkipTotal = true }).Rows.Single();
         var one = Svc.ById(b, Doc, ((string)row["id"]!).ToUpperInvariant());          // any GUID case
 

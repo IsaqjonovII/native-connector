@@ -1,0 +1,4 @@
+kansler catalog ДоговорыКонтрагентов: 1C count 116759, K=1, page 500
+outcome Complete: read 116759, accepted 116759, backend 116759 rows, 71,8 s = 1625 rows/s; slices 1
+uploaded 116759 rows / 272,6 MB, v2 count mismatches 0, byte budget peak 3,5 MB, uploads in flight peak 2
+peak memory: supervisor private 118 MB; host ws 225 MB, private 157 MB

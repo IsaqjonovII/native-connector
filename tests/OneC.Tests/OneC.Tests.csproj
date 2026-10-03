@@ -20,5 +20,13 @@
     <ProjectReference Include="..\..\src\OneC.Host\OneC.Host.csproj" />
     <ProjectReference Include="..\..\src\OneC.Supervisor\OneC.Supervisor.csproj" />
     <ProjectReference Include="..\..\src\OneC.Desktop.Core\OneC.Desktop.Core.csproj" />
+    <ProjectReference Include="..\..\src\OneC.Cloud\OneC.Cloud.csproj" />
+    <ProjectReference Include="..\..\src\OneC.CloudStub\OneC.CloudStub.csproj" />
+    <ProjectReference Include="..\..\src\OneC.SyncState\OneC.SyncState.csproj" />
+    <ProjectReference Include="..\SyncStateChild\SyncStateChild.csproj" />
+    <ProjectReference Include="..\OneCLiveChild\OneCLiveChild.csproj" />
+    <ProjectReference Include="..\..\src\OneC.Sync.Stub\OneC.Sync.Stub.csproj" />
+    <ProjectReference Include="..\..\src\OneC.Sync\OneC.Sync.csproj" />
+    <ProjectReference Include="..\..\src\OneC.Sync.Targets.Python\OneC.Sync.Targets.Python.csproj" />
   </ItemGroup>
 </Project>

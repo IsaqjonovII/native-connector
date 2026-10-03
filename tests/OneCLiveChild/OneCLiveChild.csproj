@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+  <!-- Test helper: the live scenarios that open a second SessionManager next to the suite's own,
+       and the sync scenarios that write 1C through a SessionManager while OneC.Host processes read
+       the same base, each in its own process. 1C corrupts the heap of the process now and then in
+       exactly these scenarios (0xC0000374 at ntdll+0x117eb5, MIGRATION_STATUS known limits): here
+       such a crash fails the one scenario with its exit code instead of aborting the whole run. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OneC.Host\OneC.Host.csproj" />
+    <ProjectReference Include="..\..\src\OneC.Supervisor\OneC.Supervisor.csproj" />
+  </ItemGroup>
+</Project>

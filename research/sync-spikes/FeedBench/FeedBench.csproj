@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+  <!-- S6 performance: a real month of KAN's log through feed → coalescer → sync.db. Reads the
+       log files only (shared read); the state database is a temp file. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\OneC.Sync\OneC.Sync.csproj" />
+  </ItemGroup>
+</Project>

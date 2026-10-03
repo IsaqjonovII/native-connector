@@ -23,7 +23,10 @@
     <ProjectReference Include="..\OneC.Ipc\OneC.Ipc.csproj" />
     <!-- The change feed reads 1C's event-log files; no host, no session (D36). -->
     <ProjectReference Include="..\OneC.EventLog\OneC.EventLog.csproj" />
-    <!-- 1C → cloud sync runs here, next to the change feed (D39). -->
+    <!-- 1C → cloud sync runs here, next to the change feed (D42). -->
     <ProjectReference Include="..\OneC.Sync\OneC.Sync.csproj" />
+    <ProjectReference Include="..\OneC.Sync.Stub\OneC.Sync.Stub.csproj" />
+    <ProjectReference Include="..\OneC.Sync.Targets.Python\OneC.Sync.Targets.Python.csproj" />
+    <ProjectReference Include="..\OneC.Cloud\OneC.Cloud.csproj" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,12 @@
+world: 2000 items, 800 documents, 2344 movements; connection 6abd1f19c9d08705e7757e09
+kill 10: 714 mutations so far, incremental pending 0 dead 0 cursor 11111111-2222-3333-4444-555555555555|20260930000000.lgp|133565 err 
+kill 20: 1426 mutations so far, incremental pending 0 dead 0 cursor 11111111-2222-3333-4444-555555555555|20260930000000.lgp|279613 err 
+kill 30: 2130 mutations so far, incremental pending 0 dead 0 cursor 11111111-2222-3333-4444-555555555555|20260930000000.lgp|433165 err 
+kill 40: 3012 mutations so far, incremental pending 0 dead 0 cursor 11111111-2222-3333-4444-555555555555|20260930000000.lgp|593437 err 
+kill 50: 3667 mutations so far, incremental pending 71 dead 0 cursor 11111111-2222-3333-4444-555555555555|20260930000000.lgp|743965 err 
+50 kills in 445 s, 3667 mutations; now converging
+converged in 9 s: incremental pending 0 dead 0 cursor 11111111-2222-3333-4444-555555555555|20260930000000.lgp|747773 err ; engine peak private 43 MB
+Catalog_ChaosCat: 1C 1936, backend 1936; missing 0, stale/extra 0, wrong content 0
+Document_ChaosDoc: 1C 799, backend 799; missing 0, stale/extra 0, wrong content 0
+AccountingRegister_ChaosAcc: 1C 2175, backend 2175; missing 0, stale/extra 0, wrong content 0
+PASS: the backend equals 1C

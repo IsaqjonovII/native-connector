@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+  <!-- Sync, block S12: IBackendSyncTarget over backend/1c's existing v2 routes
+       (SYNC_ENGINE_ARCHITECTURE §18). Dev/staging only until S15 and the developer's go (D-2). -->
+  <ItemGroup>
+    <ProjectReference Include="..\OneC.Sync.Abstractions\OneC.Sync.Abstractions.csproj" />
+  </ItemGroup>
+</Project>

@@ -14,12 +14,32 @@ public static class Win {
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
     [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags);
+    public delegate bool EnumProc(IntPtr h, IntPtr l);
+    [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc f, IntPtr l);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+
+    // The process's largest visible top-level window. MainWindowHandle is not enough: Windows
+    // can report a tooltip popup as the "main" window while one is showing (seen: 160x28).
+    public static IntPtr Largest(uint pid) {
+        IntPtr best = IntPtr.Zero; long area = 0;
+        EnumWindows((h, l) => {
+            uint p; GetWindowThreadProcessId(h, out p);
+            if (p == pid && IsWindowVisible(h)) {
+                RECT r; GetWindowRect(h, out r);
+                long a = (long)(r.R - r.L) * (r.B - r.T);
+                if (a > area) { area = a; best = h; }
+            }
+            return true;
+        }, IntPtr.Zero);
+        return best;
+    }
 }
 "@
 
 $p = Get-Process -Id $ProcessId -ErrorAction Stop
-$h = $p.MainWindowHandle
-if ($h -eq [IntPtr]::Zero) { throw "process $ProcessId has no main window" }
+$h = [Win]::Largest([uint32]$p.Id)
+if ($h -eq [IntPtr]::Zero) { throw "process $ProcessId has no visible window" }
 
 $r = New-Object Win+RECT
 [void][Win]::GetWindowRect($h, [ref]$r)

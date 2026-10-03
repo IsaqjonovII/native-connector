@@ -6,7 +6,29 @@ milestone.
 
 ---
 
-## Where the plan stands (2026-09-25)
+## Now: Sync (approved 2026-09-30, D42; one canonical engine since 2026-10-02, D48)
+
+Work `SYNC_IMPLEMENTATION_PLAN.md` S0 → S15 in order, each block's stop conditions apply.
+Local bases + `StubSyncTarget` only until S12; S12 writes to the shared dev backend only after
+explicit approval; no production sync until S15 is green and approved (D-2).
+
+**State 2026-10-01:** S0–S15 complete locally (stub, local bases, isolated local backend/1c);
+Release gate met (two consecutive full runs, D45). **Next: S12 on shared dev** — approved, blocked
+only on the developer signing in to Development and naming the dedicated test company; then
+`DEV_SYNC_TEST_RUNBOOK.md` end to end. After it: S14 visual approval (the developer), then the
+production decision (D-2). Backend findings to hand over: `BACKEND_SECURITY_FINDINGS.md` and the
+backend/1c v2 limits (silent drop, no register purge) in MIGRATION_STATUS known limits.
+
+**State 2026-10-03:** naming cleanup done (D48, one canonical Sync), the parent-crash test isolation
+widened (D49, gate 417/417 twice), Sync always on for connected bases (D50, still the local test
+target). **Old Connector reverse-engineered** (read-only, 2026-10-03):
+`OLD_CONNECTOR_DEEP_AUDIT.md`, `OLD_CONNECTOR_FEATURE_MAP.md`, `OLD_CONNECTOR_HIDDEN_FEATURES.md`.
+Before designing the remaining Connector features, the developer decides from those docs what to
+preserve, expand, replace or drop; the audit's §18 lists what needs a second, deeper look first
+(public reachability of the unauthenticated connector hub, `_postCreateMethod` / `hard:true` use,
+HR `exchange=true` postings, the bank-signer relay). No new architecture until that review.
+
+## Where the plan stood (2026-09-25)
 
 Every approved milestone is built and verified (MIGRATION_STATUS, final pass 2026-09-25).
 Desktop screens approved and the first checkpoint committed (2026-09-25). What is left needs
@@ -80,7 +102,7 @@ Blocks:
 | 4.4 | Visual check: screenshots at normal and narrow widths, light and dark; fix layout; send to the user |
 | 4.5 | Measure the app and the whole stack idle / active; update docs |
 
-## Milestone 5 — subsystem migration from the old Connector — 5.1–5.9 DONE (see MIGRATION_STATUS; 5.1 live parity BLOCKED, 5.9 real target PARKED), 5.10 out of scope
+## Milestone 5 — subsystem migration from the old Connector — 5.1–5.9 DONE (see MIGRATION_STATUS; 5.1 live parity spot check DONE 2026-09-25, 5.9 real target PARKED), 5.10 out of scope
 
 One subsystem at a time. Each block: map the old behaviour in `main.os`, build the .NET
 equivalent, prove parity against the old adapter on the same base, measure, then cut over
@@ -98,7 +120,7 @@ Order (dependencies first, highest value next):
 | 5.6 Change feed | 1C event log |
 | 5.7 Document writes | bank docs first, then sales/purchase, idempotency + markers |
 | 5.8 Posting | per-type, with the KAN blocker handled explicitly |
-| 5.9 Cloud sync pipeline | poller, hash diff, upload to backend |
+| 5.9 Cloud sync pipeline | poller, hash diff, upload to backend (the 5.9 engine was replaced by Sync, D42, and removed 2026-10-02, D48) |
 | 5.10 Bank + other integrations | OUT OF SCOPE (user, 2026-09-25, D40) — stays in the cloud bank service / bank-connector |
 
 ## Parked (not scheduled)

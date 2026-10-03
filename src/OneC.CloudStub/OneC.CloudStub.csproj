@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Local stand-in for the AIBA cloud's auth, company and 1C-link routes, with the prod rules
+       and error codes (specs/2026-09-30-auth-and-cloud-link.md §8). Used by the tests in-process
+       and, as an exe, as the desktop app's "custom" environment for trying the UI end to end.
+       Development only: never shipped, never pointed at real data. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+</Project>

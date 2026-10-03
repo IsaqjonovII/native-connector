@@ -47,8 +47,8 @@ public sealed class EdgeServer : IAsyncDisposable
     }
     public string Token { get; }
 
-    /// <summary>The sync scheduler's status for <c>GET /v1/sync</c> (D39); null = sync not running.</summary>
-    public Func<object>? SyncStatus { get; set; }
+    /// <summary>The sync engine (D42), served under <c>/v1/sync</c>; null = not running.</summary>
+    public OneC.Sync.Engine.SyncEngineHost? Sync { get; set; }
 
     public EdgeServer(Supervisor sup, int port, string? token = null)
     {
@@ -130,9 +130,7 @@ public sealed class EdgeServer : IAsyncDisposable
 
         r.MapGet("/v1/activity", (int? limit) => Results.Json(RecentActivity(limit ?? 200)));
 
-        r.MapGet("/v1/sync", () => SyncStatus is { } s
-            ? Results.Json(s(), IpcJson.Options)
-            : Results.Json(new { error = IpcError.Of(Layers.Host, "sync is not running (start with --sync-config)", kind: ErrorKinds.NotFound) }, IpcJson.Options, statusCode: 404));
+        MapSync(r);
 
         r.MapGet("/v1/supervisor", () =>
         {
@@ -149,6 +147,9 @@ public sealed class EdgeServer : IAsyncDisposable
 
         r.MapGet("/v1/bases/{b}/version", (string b, HttpContext c) => Pipe(c, b, Ops.Version, null));
         r.MapGet("/v1/bases/{b}/test", (string b, HttpContext c) => Pipe(c, b, Ops.Test, null));
+        // Every table of the configuration (names, synonyms); ?details=Document_X,InformationRegister_Y: those, engine-ready.
+        r.MapGet("/v1/bases/{b}/tables", (string b, string? details, HttpContext c) => Pipe(c, b, Ops.Tables,
+            details is { Length: > 0 } ? new JsonObject { ["details"] = new JsonArray(details.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(t => (JsonNode)t).ToArray()) } : null));
         r.MapPost("/v1/bases/{b}/read", async (string b, HttpContext c) => await Pipe(c, b, Ops.Read, await Body(c)));
 
         r.MapGet("/v1/bases/{b}/catalogs/{name}", (string b, string name, HttpContext c) =>
@@ -251,6 +252,63 @@ public sealed class EdgeServer : IAsyncDisposable
             var a = With(With(new JsonObject(), "docType", docType), "ref", id);
             a["hard"] = c.Request.Query.TryGetValue("hard", out var h) && Truthy(h.ToString()) == true;
             return await Pipe(c, b, Ops.Delete, a);
+        });
+    }
+
+    /// <summary>
+    /// Sync control (S13, IPC_CONTRACT §7): status, dead letters, pause/resume, retry /
+    /// approve / dismiss, per-table rebuild (D-3: <c>?confirm=true</c> required). 404 when not running.
+    /// </summary>
+    private void MapSync(IEndpointRouteBuilder r)
+    {
+        IResult Off() => Results.Json(new { error = IpcError.Of(Layers.Host, "sync is not running (start with --sync-config)", kind: ErrorKinds.NotFound) },
+                                      IpcJson.Options, statusCode: 404);
+        IResult Done(bool ok, string what) => ok ? Results.Json(new { ok = true }) :
+            Results.Json(new { error = IpcError.Of(Layers.Validation, what, kind: ErrorKinds.NotFound) }, IpcJson.Options, statusCode: 404);
+
+        r.MapGet("/v1/sync", () => Sync is { } s ? Results.Json(s.Status().Select(b => new
+        {
+            baseId = b.BaseId, mode = b.Mode, reason = b.Reason, pendingWork = b.PendingWork, deadLetters = b.DeadLetters, warning = b.Warning,
+            cursor = b.Cursor, lastEventAt = b.LastEventAt, active = b.Active, lastError = b.LastError,
+            tablesDone = b.TablesDone, tablesTotal = b.TablesTotal, missingTables = b.MissingTables,
+            tables = s.Tables(b.BaseId),
+            unmappedOrgs = b.UnmappedOrgs.Select(u => new { orgRef = u.OrgRef, table = u.Table, rows = u.Rows })
+        }), IpcJson.Options) : Off());
+        // S12: the target's HTTP calls (raw, for p50/p95 and bytes) and the failure-test switches.
+        r.MapGet("/v1/sync/http", (bool? clear) =>
+        {
+            if (Sync is null) return Off();
+            var calls = SyncMode.Http.Calls;
+            if (clear == true) SyncMode.Http.ClearCalls();
+            return Results.Json(new { armed = SyncMode.Http.Armed, calls }, IpcJson.Options);
+        });
+        r.MapPost("/v1/sync/faults", (int? fail503, int? failNetwork, int? badToken, int? reject400, bool? crashOnComplete) =>
+        {
+            if (Sync is null) return Off();
+            try
+            {
+                SyncMode.Http.Arm(fail503 ?? 0, failNetwork ?? 0, badToken ?? 0, reject400 ?? 0);
+                if (crashOnComplete == true) SyncMode.ArmCrashOnComplete();
+            }
+            catch (InvalidOperationException e) { return Results.Json(new { error = IpcError.Of(Layers.Validation, e.Message) }, IpcJson.Options, statusCode: 409); }
+            return Results.Json(new { ok = true, armed = SyncMode.Http.Armed }, IpcJson.Options);
+        });
+        r.MapGet("/v1/sync/bases/{b}/tables", (string b) => Sync is { } s ? Results.Json(s.TableStatus(b).Select(t => new
+        {
+            table = t.Table, family = t.Family, state = t.State, missing = t.Missing, rows = t.Rows, copiedSoFar = t.CopiedSoFar,
+            pending = t.Pending, failed = t.Failed, lastSentAt = t.LastSentAt
+        }), IpcJson.Options) : Off());
+        r.MapGet("/v1/sync/bases/{b}/dead-letters", (string b) => Sync is { } s ? Results.Json(s.DeadLetters(b), IpcJson.Options) : Off());
+        r.MapPost("/v1/sync/bases/{b}/pause", (string b) => Sync is { } s ? Done(s.Pause(b), $"no base {b}") : Off());
+        r.MapPost("/v1/sync/bases/{b}/resume", (string b) => Sync is { } s ? Done(s.Resume(b), $"no base {b}") : Off());
+        r.MapPost("/v1/sync/dead-letters/{id:long}/retry", (long id) => Sync is { } s ? Done(s.Retry(id), $"no dead letter {id}") : Off());
+        r.MapPost("/v1/sync/dead-letters/{id:long}/approve", (long id) => Sync is { } s ? Done(s.Approve(id), $"no approvable dead letter {id}") : Off());
+        r.MapPost("/v1/sync/dead-letters/{id:long}/dismiss", (long id, string? who) => Sync is { } s ? Done(s.Dismiss(id, who ?? "user"), $"no dead letter {id}") : Off());
+        r.MapPost("/v1/sync/bases/{b}/tables/{t}/rebuild", async (string b, string t, bool? confirm, HttpContext c) =>
+        {
+            if (Sync is not { } s) return Off();
+            var (ok, msg) = await s.RebuildAsync(b, t, confirm == true, c.RequestAborted);
+            return Results.Json(new { ok, message = msg }, statusCode: ok ? 200 : 409);
         });
     }
 

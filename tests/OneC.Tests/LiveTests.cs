@@ -26,6 +26,7 @@ public sealed class LiveFixture : IDisposable
         if (string.IsNullOrWhiteSpace(path) || !System.IO.File.Exists(path))
         {
             Skip = "set ONEC_TEST_BASES to a bases json to run live 1C tests";
+            RequireForGate();
             return;
         }
 
@@ -35,7 +36,7 @@ public sealed class LiveFixture : IDisposable
 
         var installs = PlatformCatalog.Discover();
         var pick = PlatformCatalog.Select(installs, Bases[0].PlatformVersion, Bases[0].IsFile);
-        if (pick is null) { Skip = "no matching 1C install"; return; }
+        if (pick is null) { Skip = "no matching 1C install"; RequireForGate(); return; }
 
         Manager = new SessionManager(pick.ComcntrPath, new PoolOptions
         {
@@ -46,6 +47,19 @@ public sealed class LiveFixture : IDisposable
         });
         foreach (var b in Bases) Manager.Register(b);
         Available = true;
+        RequireForGate();
+    }
+
+    /// <summary>
+    /// In the release gate (<see cref="Gate"/>) every live test must really run: a missing base list,
+    /// 1C install, server base or file base fails every test of the collection here instead of
+    /// letting ~85 of them return early as "passed".
+    /// </summary>
+    private void RequireForGate()
+    {
+        if (!Gate.On) return;
+        string? missing = !Available ? Skip : Server is null ? "no server base in ONEC_TEST_BASES" : File is null ? "no file base in ONEC_TEST_BASES" : null;
+        if (missing is not null) throw new InvalidOperationException("release gate (AIBA_TEST_GATE=1): " + missing);
     }
 
     public void Dispose() => Manager?.Dispose();

@@ -12,6 +12,13 @@ public sealed partial class ResourcesPage : Page
     public ResourcesPage()
     {
         InitializeComponent();
+        ProcessTable.PillFor = (c, text) => c == 1 ? (text == "Running" ? Controls.Pill.Ok : Controls.Pill.Warn) : null;
+        // Memory and counters change every tick: rows are updated in place by part / infobase.
+        ProcessTable.RowKey = r => r[0] ?? "";
+        PoolTable.RowKey = r => r[0] ?? "";
+        ProcessTable.PrimaryColumn = PoolTable.PrimaryColumn = 0;
+        ProcessTable.MutedColumns.Add(3);                  // which bases a part serves
+        PoolTable.FillColumn = 0;                          // spare width to the name, not after the numbers
         _timer.Tick += async (_, _) => await Refresh(keep: true);
         Loaded += async (_, _) => { _timer.Start(); await Refresh(keep: false); };
         Unloaded += (_, _) => _timer.Stop();
@@ -39,14 +46,13 @@ public sealed partial class ResourcesPage : Page
 
         long app = ProcessMemory.SelfMb();
         long supWs = sup["workingSetMb"]!.GetValue<long>();
-        using var me = System.Diagnostics.Process.GetCurrentProcess();
 
+        // People's names for the parts, one state pill, memory, and what each 1C engine serves.
+        // Process ids, threads, handles and private bytes are for developers (OneC.Host mem).
         var procs = new List<string?[]>
         {
-            new[] { "This window", me.Id.ToString(), "Running", $"{app:N0}", $"{me.PrivateMemorySize64 / 1024 / 1024:N0}",
-                    me.Threads.Count.ToString(), me.HandleCount.ToString(), "" },
-            new[] { "Engine supervisor", sup["pid"]!.ToString(), "Running", $"{supWs:N0}", $"{sup["privateMb"]:N0}",
-                    sup["threads"]!.ToString(), sup["handles"]!.ToString(), "" }
+            new[] { "AIBA Connector (this window)", "Running", $"{app:N0} MB", "" },
+            new[] { "Engine manager", "Running", $"{supWs:N0} MB", "" }
         };
         var pools = new List<string?[]>();
         long total = app + supWs;
@@ -60,20 +66,19 @@ public sealed partial class ResourcesPage : Page
             var stats = h["stats"] as JsonObject;
             sessions += stats?["sessions"]?.GetValue<int>() ?? 0;
 
+            // "8.3.15.1565-x64" → "1C engine 8.3.15"
+            string key = h["key"]!.GetValue<string>();
+            string version = string.Join('.', key.Split('-')[0].Split('.').Take(3));
             procs.Add(new[]
             {
-                $"1C engine {h["key"]}", h["pid"]?.ToString() ?? "", h["state"]!.GetValue<string>(),
-                $"{ws:N0}", $"{h["privateMb"]:N0}", stats?["threads"]?.ToString() ?? "",
-                stats?["handles"]?.ToString() ?? "", string.Join(", ", h["bases"]!.AsArray().Select(b => b!.GetValue<string>()))
+                $"1C engine {version}", h["state"]!.GetValue<string>() == "Ready" ? "Running" : h["state"]!.GetValue<string>(),
+                $"{ws:N0} MB", string.Join(", ", h["bases"]!.AsArray().Select(b => b!.GetValue<string>()))
             });
 
             foreach (var p in stats?["pools"]?.AsArray() ?? new JsonArray())
                 pools.Add(new[]
                 {
-                    p!["baseName"]!.GetValue<string>(), p["kind"]!.GetValue<string>(), h["key"]!.GetValue<string>(),
-                    p["live"]!.ToString(), p["inUse"]!.ToString(), p["idle"]!.ToString(),
-                    $"{p["rents"]:N0}", p["created"]!.ToString(),
-                    $"{p["retired"]} idle · {p["evicted"]} evicted · {p["broken"]} failed"
+                    p!["baseName"]!.GetValue<string>(), p["live"]!.ToString(), p["inUse"]!.ToString(), $"{p["rents"]:N0}"
                 });
         }
 
@@ -82,11 +87,8 @@ public sealed partial class ResourcesPage : Page
         TotalHosts.Text = hosts.Count.ToString();
         TotalRestarts.Text = restarts.ToString();
 
-        ProcessTable.SetData(
-            new[] { "Process", "PID", "State", "Memory, MB", "Private, MB", "Threads", "Handles", "Infobases" },
-            procs, numericColumns: new[] { 3, 4, 5, 6 }, keepLayout: keep);
-        PoolTable.SetData(
-            new[] { "Infobase", "Type", "Engine", "Open", "Busy", "Idle", "Requests served", "Opened", "Closed" },
-            pools, numericColumns: new[] { 3, 4, 5, 6, 7 }, keepLayout: keep);
+        ProcessTable.SetData(new[] { "Part", "State", "Memory", "Serves" }, procs, numericColumns: new[] { 2 }, keepLayout: keep);
+        PoolTable.SetData(new[] { "Infobase", "Open connections", "Busy now", "Requests answered" },
+                          pools, numericColumns: new[] { 1, 2, 3 }, keepLayout: keep);
     }
 }

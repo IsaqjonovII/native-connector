@@ -154,48 +154,27 @@ public class ConnectionLifecycleLiveTests
     /// A session that died while idle (server restart, network drop) is detected on borrow and
     /// replaced — the request succeeds instead of failing (old adapter: СоединениеЖиво, main.os:2782).
     /// </summary>
+    /// <remarks>Its own SessionManager, so in a child process (<see cref="LiveChild"/>).</remarks>
     [Fact]
     public void DeadIdleSessionIsReplacedOnBorrow()
     {
         if (!_f.Available) return;
-        var b = _f.Server ?? _f.File!;
-        using var m = new SessionManager(_f.Manager!.ComcntrPath, new PoolOptions { ValidateIdleAfter = TimeSpan.Zero });
-        m.Register(b);
-        var svc = new ReadService(m);
-
-        Assert.NotEmpty(svc.Read(b.Name, Q).Rows);              // one warm, idle session
-        Assert.Equal(1, m.KillIdleConnectionsForTest(b.Name));  // …whose connection now dies
-
-        Assert.NotEmpty(svc.Read(b.Name, Q).Rows);              // served anyway
-        Assert.Equal(1, m.ProbeFailures(b.Name));
-        var s = m.Stats().Single();
-        Assert.Equal(2, s.Created);
-        Assert.Equal(1, s.Live);
+        LiveChild.Run("dead-idle-session");
     }
 
     /// <summary>
     /// The machine-wide queue is real: while another holder (here: this test, standing in for
     /// the old adapter) has the lock, a file-base Connect waits, then proceeds.
     /// </summary>
+    /// <remarks>
+    /// Its own SessionManager, so in a child process (<see cref="LiveChild"/>); the second
+    /// recorded 0xC0000374 (2026-09-25) hit this test in the test process.
+    /// </remarks>
     [Fact]
     public void FileBaseConnectWaitsForTheMachineWideLock()
     {
         if (!_f.Available || _f.File is null) return;
-        using var m = new SessionManager(_f.Manager!.ComcntrPath, new PoolOptions());
-        m.Register(_f.File);
-
-        long waited;
-        var holder = FileConnectLock.Acquire(FileConnectLock.LockPath, TimeSpan.FromSeconds(30));
-        Assert.NotNull(holder);
-        var release = Task.Run(async () => { await Task.Delay(2000); holder!.Dispose(); });
-
-        var sw = Stopwatch.StartNew();
-        var rows = new ReadService(m).Read(_f.File.Name, Q).Rows;
-        waited = sw.ElapsedMilliseconds;
-        release.Wait();
-
-        Assert.NotEmpty(rows);
-        Assert.True(waited >= 1500, $"file connect did not wait for the lock ({waited} ms)");
+        LiveChild.Run("file-connect-lock");
     }
 }
 

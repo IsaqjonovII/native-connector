@@ -58,7 +58,10 @@ pipe is up.
 | `read` | yes | `entity, fields[], limit, orderBy?, desc?, from?, to?, refs?` | `{ rows: [ {field: value} ], sessionId }` |
 | `catalog` | yes | `catalog, limit?=100, offset?, fields[]?, filters{}?, after?, skipTotal?` — or `catalog, id` | `{ rows, totalCount, next, ignoredFields, sessionId }` — or `{ row }` (D33) |
 | `slices` | yes | `kind (information\|accumulation\|accounting\|document), name, parts?=4, from?, to?` | `{ slices: [{ from, to, rows }] }` — balanced period slices for a parallel cold read (D35) |
-| `register` | yes | `kind (information\|accumulation\|accounting), register, limit?=100, offset?, cursorDate?, order?=desc, to?, skipTotal?, recorderDocument?, recorderId?` (the last two: one document's movements, 5.9) | `{ rows, totalCount, nextCursorDate, nextCursorSkip, hasMore, sessionId }` (D34) |
+| `tables` | yes | — or `details: [table…]` | `{ tables: [{ table, name, synonym, family, isMovement }] }` — every catalog, document, chart of accounts and register (names + synonyms, cached like schemas; 1 656 on bilim in 3 s); with `details`, the given tables with `family` (`reg_info_recorded` / `reg_info_independent`) and `isMovement` read from 1C — Sync "Add table" (2026-10-01) |
+| `register` | yes | `kind (information\|accumulation\|accounting), register, limit?=100, offset?, cursorDate?, order?=desc, to?, skipTotal?, recorderDocument?, recorderId?` (the last two: one document's movements, 5.9); sync (S3): `syncKeys?` (every recorded row gets `recorderRef`, `lineNo`, every row with an organisation `orgRef`; independent information registers page by natural key and each row gets `naturalKey`), `afterLine?` (by-recorder page after that НомерСтроки), `afterKey?` (independent register page after that key) | `{ rows, totalCount, nextCursorDate, nextCursorSkip, hasMore, sessionId, nextLine?, nextKey? }` (D34) |
+| `versions` | yes | `table (Документ.X\|Справочник.X\|ПланСчетов.X), after?, limit?=5000` — or `table, ids[]` | `{ rows: [{ id, version }], next, sessionId }` — or `{ rows }` (ids missing from the answer are gone from 1C). Sync §6/§12 |
+| `chart` | yes | `chart, limit?=1000, offset?` | `{ rows, totalCount, hasMore, sessionId }` — the old `/api/charts/{name}` rows (every column of `ВЫБРАТЬ *`, by Код) |
 | `document` | yes | `document, limit?=100, offset?, fields[]?, filters{}?, cursorDate?, order?=desc, after?, tabular?=true, from?, to?, skipTotal?` — or `document, id` — or `document, ids[]` | `{ rows, totalCount, nextCursorDate, nextCursorSkip, next, ignoredFields, document, sessionId }` — `{ row }` — `{ rows }` (D33) |
 | `create` | yes | `docType, body{}, post?=true, exchange?` — body = the old adapter's create body (D38) | `{ id, number, date, posted, created, idempotent, document, requestedDocumentName?, fillDiagnostics?, sessionId }` |
 | `update` | yes | `docType, ref, fields{}, post?, autoUnpost?=false` | `{ id, updated, posted, autoUnposted, reposted, fillDiagnostics?, sessionId }` |
@@ -129,6 +132,9 @@ resolved one.
 }
 ```
 
+With `kind: "notFound"`, `notFoundScope` says what is missing: `object` (the table exists, the
+GUID does not — the only not-found a sync may turn into a delete) or `metadata` (no such table).
+
 Extra layers for transport-level failures:
 
 | layer | when |
@@ -170,7 +176,15 @@ process that launches it, e.g. the WinUI app).
 | GET | `/v1/hosts` | `stats` on each host + supervisor view |
 | GET | `/v1/bases` | — (plan) |
 | GET | `/v1/events`, `/v1/activity`, `/v1/supervisor` | — (supervisor's own log, request log, state) |
-| GET | `/v1/sync` | — sync scheduler status per base (`run --sync-config f.json`, D39); 404 when sync is off |
+| GET | `/v1/sync` | — Sync (D42/D48, `run --sync-config f.json`): per base `mode, reason, pendingWork, deadLetters, warning, cursor, lastEventAt, active, lastError, unmappedOrgs`; 404 when not running |
+| GET | `/v1/sync/bases/{b}/dead-letters` | — the base's dead letters |
+| POST | `/v1/sync/bases/{b}/pause` · `/resume` | — user pause / resume (resume continues an unfinished snapshot) |
+| POST | `/v1/sync/dead-letters/{id}/retry` · `/approve` · `/dismiss?who=` | — back to the queue · approve a `needs_approval` delete · accept the cloud as it is (recorded) |
+| POST | `/v1/sync/bases/{b}/tables/{t}/rebuild?confirm=true` | — D-3 per-table rebuild; 409 without `confirm=true`, when the target cannot purge (Python v2 backend), or on the shared dev target (refused there, D47) |
+| GET | `/v1/sync/bases/{b}/tables` | — per configured table: `table, family, state (missing / waiting / copying / synced), missing, rows, copiedSoFar, pending, failed, lastSentAt` (the base's sync screen) |
+| GET | `/v1/sync/http?clear=` | — S12: the target's HTTP calls (`method, path` without ids, `status, ms, requestBytes, responseBytes`) and the armed faults; `clear=true` empties the list |
+| POST | `/v1/sync/faults?fail503=&failNetwork=&badToken=&reject400=&crashOnComplete=` | — S12 failure tests, only with `faults: true` on a non-stub target (409 otherwise); injected locally, never sent |
+| GET | `/v1/bases/{b}/tables[?details=T1,T2]` | `tables` — every catalog / document / chart / register of the configuration (`table, name, synonym, family, isMovement`; names + synonyms only, host-cached); with `details`, those tables with their family and movement flag read from 1C |
 | POST | `/v1/bases/{base}/read` | `read` |
 | GET | `/v1/bases/{base}/version` | `version` |
 | GET | `/v1/bases/{base}/test` | `test` |

@@ -34,6 +34,7 @@ public static class Program
             return mode switch
             {
                 "info" => Info(argv),
+                "probe" => Probe(argv),
                 "plan" => Plan(argv),
                 "read" => Read(argv),
                 "mem" => Mem(argv),
@@ -70,7 +71,9 @@ public static class Program
                 "nativecrash" => NativeCrash(argv),
                 "writeparity" => WriteParity(argv),
                 "exittrap" => ExitTrap(argv),
-                "logscan" => EventLogExport.Scan(LoadBases(argv).First(x => x.Name == (Arg(argv, "base") ?? LoadBases(argv)[0].Name)),
+                "spike-versions" => SpikeVersions(argv),
+                "spike-lifecycle" => SpikeLifecycle(argv),
+                "logscan" =>EventLogExport.Scan(LoadBases(argv).First(x => x.Name == (Arg(argv, "base") ?? LoadBases(argv)[0].Name)),
                                                  IntArg(argv, "mb", 8) * 1048576L),
                 _ => Help()
             };
@@ -212,6 +215,31 @@ public static class Program
         return EventLogExport.Parity(m, b, IntArg(argv, "wait", 60), Flag(argv, "write"), Flag(argv, "rollback"));
     }
 
+    /// <summary>Sync S0 Q1a/Q2: ВерсияДанных in queries, version-scan speed.</summary>
+    private static int SpikeVersions(string[] argv)
+    {
+        var bases = LoadBases(argv);
+        using var m = Open(argv, bases);
+        string baseName = Arg(argv, "base") ?? bases[0].Name;
+        var tables = (Arg(argv, "tables") ?? "Документ.ПоступлениеТоваровУслуг,Справочник.Номенклатура").Split(',');
+        foreach (var t in tables) SyncSpikes.Selectable(m, baseName, t);
+        if (Arg(argv, "scan") is { } scan)
+            foreach (var t in scan.Split(','))
+            {
+                Console.WriteLine($"  {t}: COUNT {SyncSpikes.Count(m, baseName, t)}");
+                SyncSpikes.Scan(m, baseName, t, IntArg(argv, "page", 5000));
+            }
+        return 0;
+    }
+
+    private static int SpikeLifecycle(string[] argv)
+    {
+        var bases = LoadBases(argv);
+        using var m = Open(argv, bases);
+        var b = bases.First(x => x.Name == (Arg(argv, "base") ?? bases[0].Name));
+        return SyncSpikes.Lifecycle(m, b, Arg(argv, "doc") ?? "ПоступлениеТоваровУслуг");
+    }
+
     private static int LogExport(string[] argv)
     {
         var bases = LoadBases(argv);
@@ -299,6 +327,49 @@ public static class Program
         foreach (var i in PlatformCatalog.Discover())
             Console.WriteLine($"  {i.Version,-14} {i.Bitness,-5} hostKey={i.HostKey,-18} {i.ComcntrPath}");
         return 0;
+    }
+
+    /// <summary>
+    /// One connection check for the desktop's Connect form, before anything is saved (the old
+    /// adapter's --test-connections, main.os:2180). Reads {Name, ConnectionString, PlatformVersion}
+    /// as one JSON line on stdin — the password never goes on the command line — connects once,
+    /// reads the configuration and prints one JSON line: {ok:true, configuration, synonym,
+    /// configurationVersion, platformVersion} or {ok:false, code, message}.
+    /// </summary>
+    private static int Probe(string[] argv)
+    {
+        var line = new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+        var b = JsonSerializer.Deserialize<OneCBase>(Console.In.ReadLine() ?? "")
+                ?? throw new ArgumentException("probe: no base on stdin");
+        try
+        {
+            using var m = Open(argv, new List<OneCBase> { b });
+            var info = m.Use(b.Name, ctx =>
+            {
+                using var scope = new ComScope();
+                var md = scope.Track(Dispatch.Get(ctx.Connection, "Метаданные", ctx.Error), "Метаданные");
+                return new
+                {
+                    ok = true,
+                    configuration = Dispatch.GetString(md, "Имя", ctx.Error),
+                    synonym = Dispatch.GetString(md, "Синоним", ctx.Error),
+                    configurationVersion = Dispatch.GetString(md, "Версия", ctx.Error),
+                    platformVersion = ctx.Error.PlatformVersion
+                };
+            });
+            Console.WriteLine(JsonSerializer.Serialize(info, line));
+            return 0;
+        }
+        catch (OneCException oe)
+        {
+            Console.WriteLine(JsonSerializer.Serialize(new { ok = false, code = oe.Category, message = oe.Message }, line));
+            return 2;
+        }
+        catch (InvalidOperationException ex)            // no 1C install for the asked version
+        {
+            Console.WriteLine(JsonSerializer.Serialize(new { ok = false, code = ErrorCategory.Version, message = ex.Message }, line));
+            return 2;
+        }
     }
 
     private static int Plan(string[] argv)

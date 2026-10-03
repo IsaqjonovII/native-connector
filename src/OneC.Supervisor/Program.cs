@@ -24,22 +24,24 @@ public static class Program
         string mode = argv.Length > 0 && !argv[0].StartsWith("--") ? argv[0] : "help";
         string? basesFile = Arg(argv, "bases");
         bool basesStdin = argv.Contains("--bases-stdin");
-        if ((basesFile is null && !(basesStdin && mode == "run")) || mode is not ("run" or "verify" or "sync"))
+        if (mode == "sync-snapshot" && basesFile is not null)
         {
-            Console.WriteLine("OneC.Supervisor run|verify --bases <list.json> | --bases-stdin [--port N] [--token T] " +
-                              "[--file-version 8.3.18.1289] [--doc ПоступлениеТоваровУслуг] [--host OneC.Host.exe]\n" +
-                              "OneC.Supervisor sync --bases <list.json> --base N --tables T1,T2 [--from yyyy-MM-dd] [--state f.json] [--passes 1]\n" +
-                              "  syncs into a local stub backend (D39) and compares its counts with 1C's");
-            return 1;
+            var sb = JsonSerializer.Deserialize<List<OneCBase>>(File.ReadAllText(basesFile))!;
+            return await SyncBench.Run(sb, new SupervisorOptions { HostExe = Arg(argv, "host") ?? DefaultHostExe() },
+                                       Arg(argv, "base") ?? sb[0].Name, Arg(argv, "table") ?? "catalog:Банки",
+                                       int.TryParse(Arg(argv, "k"), out int k) ? k : 1, SyncBench.Date(Arg(argv, "from")),
+                                       int.TryParse(Arg(argv, "page"), out int pg) ? pg : 500);
         }
-        if (mode == "sync")
+        if (mode == "sync-dev") return await SyncDev.Run(argv, n => Arg(argv, n));
+        if (mode == "sync-verify" && basesFile is not null && Arg(argv, "sync-config") is { } verifyConfig)
+            return await SyncVerify.Run(JsonSerializer.Deserialize<List<OneCBase>>(File.ReadAllText(basesFile))!,
+                                        new SupervisorOptions { HostExe = Arg(argv, "host") ?? DefaultHostExe() }, verifyConfig, Arg(argv, "report"));
+        if ((basesFile is null && !(basesStdin && mode == "run")) || mode is not ("run" or "verify"))
         {
-            var syncBases = JsonSerializer.Deserialize<List<OneCBase>>(File.ReadAllText(basesFile!))!;
-            return await SyncMode.Run(syncBases, new SupervisorOptions { HostExe = Arg(argv, "host") ?? DefaultHostExe() },
-                                      Arg(argv, "base") ?? syncBases[0].Name, (Arg(argv, "tables") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries),
-                                      Arg(argv, "from") is { } f ? DateTime.Parse(f, System.Globalization.CultureInfo.InvariantCulture) : null,
-                                      Arg(argv, "state") ?? Path.Combine(Path.GetTempPath(), "aiba-sync-state.json"),
-                                      int.TryParse(Arg(argv, "passes"), out int passes) ? passes : 1);
+            Console.WriteLine("OneC.Supervisor run|verify --bases <list.json> | --bases-stdin [--port N] [--token T] [--sync-config sync.json] " +
+                              "[--file-version 8.3.18.1289] [--doc ПоступлениеТоваровУслуг] [--host OneC.Host.exe]\n" +
+                              "OneC.Supervisor sync-snapshot|sync-verify|sync-dev …  sync measurement and S12 helpers (DEV_SYNC_TEST_RUNBOOK.md)");
+            return 1;
         }
 
         string basesJson = basesStdin ? Console.In.ReadLine() ?? "[]" : File.ReadAllText(basesFile!);
@@ -63,26 +65,9 @@ public static class Program
         using var sup = new Supervisor(opt);
         sup.Start(bases);
         await using var edge = new EdgeServer(sup, port, token);
-        // Optional 1C → cloud sync (D39): the configured backend, or the local stub when none is set.
-        await using var stub = syncConfig is not null && string.IsNullOrEmpty(OneC.Sync.SyncConfig.Load(syncConfig).Target) ? new OneC.Sync.StubBackend() : null;
-        OneC.Sync.SyncScheduler? scheduler = null;
-        if (syncConfig is not null)
-        {
-            var cfg = OneC.Sync.SyncConfig.Load(syncConfig);
-            OneC.Sync.IUploadTarget target;
-            if (stub is not null)
-            {
-                await stub.StartAsync();
-                target = new OneC.Sync.HttpUploadTarget(new HttpClient { BaseAddress = stub.BaseAddress, Timeout = TimeSpan.FromMinutes(5) }, stub.Authorize);
-            }
-            else
-                target = new OneC.Sync.HttpUploadTarget(new HttpClient { BaseAddress = new Uri(cfg.Target!), Timeout = TimeSpan.FromMinutes(5) },
-                                                        r => r.Headers.Authorization = new("Bearer", cfg.Token));
-            scheduler = new OneC.Sync.SyncScheduler(new OneC.Sync.SyncEngine(new SupervisorSource(sup), target), cfg);
-            edge.SyncStatus = () => new { target = stub is null ? cfg.Target : "local stub", bases = scheduler.Status() };
-            scheduler.Start();
-        }
-        await using var _ = scheduler;
+        // Sync (D42): stub, a loopback backend or the dev target only, until the developer's go (D-2).
+        (OneC.Sync.Engine.SyncEngineHost Host, IDisposable Db)? sync = syncConfig is null ? null : await SyncMode.StartAsync(sup, bases, syncConfig);
+        edge.Sync = sync?.Host;
         await edge.StartAsync();
         // The launching process (the WinUI app) reads the port and token from this line.
         Console.WriteLine(JsonSerializer.Serialize(new { @event = "ready", port = edge.Port, token = edge.Token,
@@ -91,6 +76,12 @@ public static class Program
                                                          unplaceable = sup.Unplaceable.Select(u => new { name = u.Base.Name, reason = u.Reason }) }));
         Console.Out.Flush();
         await Task.Run(() => { while (Console.In.ReadLine() is not null) { } });
+        if (sync is { } s)
+        {
+            await s.Host.StopAsync();
+            s.Host.Dispose();
+            s.Db.Dispose();
+        }
         return 0;
     }
 

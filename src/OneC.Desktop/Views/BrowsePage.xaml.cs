@@ -46,6 +46,13 @@ public sealed partial class BrowsePage : Page
             };
     }
 
+    /// <summary>Opened for one base (an infobase card's Browse): start on it.</summary>
+    protected override void OnNavigatedTo(Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
+    {
+        base.OnNavigatedTo(e);
+        if (e.Parameter is string b && App.Bases.Bases.Any(x => x.Name == b)) BaseBox.SelectedItem = b;
+    }
+
     private void Entity_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
     {
         if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput) return;
@@ -68,8 +75,16 @@ public sealed partial class BrowsePage : Page
         }
         if (BaseBox.SelectedItem is not string baseName) { Show(InfoBarSeverity.Warning, "Choose an infobase."); return; }
 
+        // Empty Columns = the usual columns for that kind of table (what the grey hint suggests).
+        if (FieldsBox.Text.Trim().Length == 0 && DefaultFields.TryGetValue(EntityBox.Text.Split('.')[0].Trim(), out var usual))
+            FieldsBox.Text = usual;
         var fields = FieldsBox.Text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
-        if (fields.Count == 0) { Show(InfoBarSeverity.Warning, "Enter at least one column."); return; }
+        if (fields.Count == 0)
+        {
+            Table.Clear();                                     // no old rows under the warning
+            Show(InfoBarSeverity.Warning, "Enter at least one column.");
+            return;
+        }
         string refs = RefsBox.SelectedIndex switch { 1 => "guid", 2 => "both", _ => "text" };
         int limit = double.IsNaN(LimitBox.Value) ? 100 : (int)LimitBox.Value;
 

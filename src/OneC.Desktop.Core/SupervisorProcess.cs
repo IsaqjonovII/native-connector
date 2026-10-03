@@ -64,7 +64,52 @@ public sealed class SupervisorProcess : IDisposable
         return File.Exists(dev) ? dev : null;
     }
 
-    public async Task StartAsync(string basesPayload, CancellationToken ct = default)
+    /// <summary>
+    /// Checks a connection before it is saved: a one-shot <c>OneC.Host probe</c> child (connect
+    /// once, read the configuration, exit), like the old adapter's --test-connections. The
+    /// connection string, password included, goes over stdin only. Returns the host's answer
+    /// line: {ok, configuration, synonym, configurationVersion, platformVersion} or {ok:false, code, message}.
+    /// </summary>
+    public async Task<JsonElement> ProbeAsync(string name, string connectionString, string platformVersion, CancellationToken ct)
+    {
+        string hostExe = HostExe() ?? throw new InvalidOperationException("OneC.Host.exe not found.");
+        var psi = new ProcessStartInfo(hostExe)
+        {
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            StandardInputEncoding = new UTF8Encoding(false),
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8
+        };
+        psi.ArgumentList.Add("probe");
+        using var p = Process.Start(psi) ?? throw new InvalidOperationException("the 1C check did not start");
+        var stderr = p.StandardError.ReadToEndAsync(CancellationToken.None);
+        await p.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new
+        {
+            Name = name, ConnectionString = connectionString, PlatformVersion = platformVersion
+        }));
+        p.StandardInput.Close();
+        try
+        {
+            string? line;
+            while ((line = await p.StandardOutput.ReadLineAsync(ct)) is not null)
+                if (line.StartsWith('{')) return JsonDocument.Parse(line).RootElement.Clone();
+            string err = (await stderr).Trim();
+            throw new InvalidOperationException("The 1C check ended without an answer" + (err.Length > 0 ? ": " + err : "."));
+        }
+        catch (OperationCanceledException)
+        {
+            // A stalled file base can hold the connect for minutes; Kill() works where exit hangs.
+            try { p.Kill(); } catch (InvalidOperationException) { }
+            throw;
+        }
+    }
+
+    /// <param name="syncConfig">Sync (preview, behind a setting that is off by default until S15): its config file.</param>
+    public async Task StartAsync(string basesPayload, CancellationToken ct = default, string? syncConfig = null)
     {
         Stop();
         Set(SupervisorState.Starting, null);
@@ -89,6 +134,7 @@ public sealed class SupervisorProcess : IDisposable
             StandardErrorEncoding = Encoding.UTF8
         };
         foreach (var a in new[] { "run", "--bases-stdin", "--port", "0", "--host", hostExe }) psi.ArgumentList.Add(a);
+        if (syncConfig is not null) { psi.ArgumentList.Add("--sync-config"); psi.ArgumentList.Add(syncConfig); }
 
         Process p;
         try { p = Process.Start(psi) ?? throw new InvalidOperationException("process did not start"); }

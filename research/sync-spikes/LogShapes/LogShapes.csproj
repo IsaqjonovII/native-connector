@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\OneC.EventLog\OneC.EventLog.csproj" />
+  </ItemGroup>
+  <!-- S0 spike (read-only): what does 1C put in the Data field of each data event, per metadata
+       kind? Reads a window of a .lgp file; never writes anything. -->
+</Project>

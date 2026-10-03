@@ -1,0 +1,108 @@
+<Page
+    x:Class="OneC.Desktop.Views.BaseSyncPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:c="using:OneC.Desktop.Controls">
+
+    <Grid Padding="28,20,28,20" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" MinHeight="160" />
+        </Grid.RowDefinitions>
+
+        <!-- Opened from an infobase card: back goes to Infobases. -->
+        <Grid ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Button x:Name="BackButton" Click="Back_Click" VerticalAlignment="Top" Margin="0,6,0,0" Width="36" Height="32" Padding="0"
+                    Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="Back to Infobases" AutomationProperties.Name="Back to Infobases">
+                <FontIcon Glyph="&#xE72B;" FontSize="16" />
+            </Button>
+            <StackPanel Grid.Column="1">
+                <TextBlock x:Name="BaseTitle" Text="Sync" Style="{StaticResource PageTitleStyle}" TextTrimming="CharacterEllipsis" />
+                <TextBlock Style="{StaticResource PageSubtitleStyle}" TextWrapping="Wrap"
+                           Text="For now sync copies to a test target on this computer. Nothing is sent to AIBA yet." />
+            </StackPanel>
+            <Button x:Name="PauseButton" Grid.Column="2" VerticalAlignment="Top" Margin="0,8,0,0" Click="Pause_Click" Visibility="Collapsed" MinWidth="110">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon x:Name="PauseGlyph" Glyph="&#xE769;" FontSize="14" />
+                    <TextBlock x:Name="PauseText" Text="Pause" />
+                </StackPanel>
+            </Button>
+        </Grid>
+
+        <InfoBar x:Name="Notice" Grid.Row="1" IsOpen="False" IsClosable="True" />
+
+        <!-- The base at a glance: one shared row of figures, label under value. -->
+        <Grid x:Name="Summary" Grid.Row="2" ColumnSpacing="10" Visibility="Collapsed">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="1.4*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Border Style="{StaticResource PanelStyle}" Padding="14,10,14,10">
+                <StackPanel Spacing="4">
+                    <Border x:Name="StatePill" CornerRadius="12" Padding="8,3,10,4" HorizontalAlignment="Left">
+                        <TextBlock x:Name="StateText" FontSize="14" TextTrimming="CharacterEllipsis" />
+                    </Border>
+                    <TextBlock Text="Status" Style="{StaticResource MetricLabelStyle}" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="1" Style="{StaticResource PanelStyle}" Padding="14,10,14,10">
+                <StackPanel>
+                    <TextBlock x:Name="LastChange" Text="—" Style="{StaticResource MetricValueStyle}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock x:Name="LastChangeLabel" Text="Last change in 1C" Style="{StaticResource MetricLabelStyle}" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="2" Style="{StaticResource PanelStyle}" Padding="14,10,14,10">
+                <StackPanel>
+                    <TextBlock x:Name="TablesSynced" Text="—" Style="{StaticResource MetricValueStyle}" />
+                    <TextBlock Text="Tables copied" Style="{StaticResource MetricLabelStyle}" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="3" Style="{StaticResource PanelStyle}" Padding="14,10,14,10">
+                <StackPanel>
+                    <TextBlock x:Name="Waiting" Text="—" Style="{StaticResource MetricValueStyle}" />
+                    <TextBlock Text="Changes waiting" Style="{StaticResource MetricLabelStyle}" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="4" Style="{StaticResource PanelStyle}" Padding="14,10,14,10">
+                <StackPanel>
+                    <TextBlock x:Name="Problems" Text="—" Style="{StaticResource MetricValueStyle}" />
+                    <TextBlock Text="Need your decision" Style="{StaticResource MetricLabelStyle}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Things to tell or to decide: shown first, above the tables, only when there are any. -->
+        <StackPanel x:Name="Attention" Grid.Row="3" Spacing="8" Visibility="Collapsed" />
+
+        <Grid x:Name="TablesTitle" Grid.Row="4" Visibility="Collapsed">
+            <TextBlock Text="Tables" Style="{StaticResource SectionTitleStyle}" VerticalAlignment="Center" />
+            <Button x:Name="AddTableButton" HorizontalAlignment="Right" Click="AddTable_Click" AutomationProperties.Name="Add tables">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="&#xE710;" FontSize="14" />
+                    <TextBlock Text="Add table" />
+                </StackPanel>
+            </Button>
+        </Grid>
+        <Border x:Name="TablesPanel" Grid.Row="5" Style="{StaticResource PanelStyle}" Padding="0" Visibility="Collapsed">
+            <c:ResultTable x:Name="Table" EmptyText="No tables are set up for this base." />
+        </Border>
+
+        <StackPanel x:Name="Empty" Grid.Row="2" Grid.RowSpan="4" Spacing="8" VerticalAlignment="Center" HorizontalAlignment="Center" Visibility="Collapsed">
+            <FontIcon Glyph="&#xE895;" FontSize="32" HorizontalAlignment="Center" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+            <TextBlock x:Name="EmptyTitle" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
+            <TextBlock x:Name="EmptyText" Style="{StaticResource MetricLabelStyle}" TextWrapping="Wrap" MaxWidth="460" TextAlignment="Center" />
+        </StackPanel>
+    </Grid>
+</Page>

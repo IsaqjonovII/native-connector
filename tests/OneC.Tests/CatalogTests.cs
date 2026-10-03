@@ -264,7 +264,7 @@ public class CatalogLiveTests
         Assert.Contains(hit.Rows, r => (string?)r["id"] == (string?)probe["id"]);
         Assert.All(hit.Rows, r => Assert.Equal(probe["ИНН"], r["ИНН"]));
 
-        if (SchemaOf(b.Name, "ДоговорыКонтрагентов") is null) return;
+        if (Gate.Skip(SchemaOf(b.Name, "ДоговорыКонтрагентов") is null, $"{b.Name} has no ДоговорыКонтрагентов")) return;
         var contracts = new ReadService(M).Read(b.Name, new ReadQuery
         {
             Entity = "Справочник.ДоговорыКонтрагентов", Fields = new[] { "Ссылка", "Владелец.ИНН" }, Limit = 200, Refs = RefMode.Guid

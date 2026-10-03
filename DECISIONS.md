@@ -686,6 +686,8 @@ PC (bilim file base, the KAN restore), `AIBA_REWRITE_` marker, cleaned up. Never
 
 ## D39 — Cloud sync is built against a local stub first (milestone 5.9)
 
+**Superseded by D42/D48.** The engine described here was deleted on 2026-10-02 (D48).
+
 **Decision (user, 2026-09-25).** The sync pipeline (poller, change detection, upload) is built
 and verified against a local stub of backend/1c's `/entity/upload` contract. Nothing leaves
 this PC; the real target (backend/1c or the aiba-next module) and its credentials are chosen
@@ -693,7 +695,7 @@ later. The stub implements the contract as the backend code has it (mapped from 
 from memory) so the switch is a configuration change.
 
 **Design, and how it differs from the connector's pipeline.** The sync runs in the supervisor
-(`OneC.Sync`, no COM), next to the change feed. The connector had no feed, so it gated on row
+(the 5.9 `OneC.Sync`, removed 2026-10-02, D48; no COM), next to the change feed. The connector had no feed, so it gated on row
 counts, kept per-table hash maps, and needed two consecutive full sweeps to believe a delete;
 here the feed names every change (D36), so: a cold read once per table (resumable, progress
 saved only after the backend accepted a page), then per pass the feed's events — changed
@@ -742,3 +744,295 @@ thread after ~65 file-base churn cycles.
 
 **Not chosen.** `PerBaseMinWarm = 1` (keeper) would flatten file-base growth but costs
 ~210–460 MB per active file base permanently; revisit only if recycling proves disruptive.
+
+## D41 — AIBA cloud account in the desktop app: login + link + legacy status only (2026-09-30)
+
+**Decision.** User request ("point things to prod, I'll log in and connect bases"), contract
+from `specs/2026-09-30-auth-and-cloud-link.md`. New `src/OneC.Cloud` (no UI):
+1. Login exactly as the old Connector: phone + password form POST to `{api}/auth/login`
+   (Production `api.aiba.group` by default; Development; a `cloud.json` "custom" env for the
+   local stub, plain http only on loopback). Refresh on 401 only, single-flight, one retry;
+   a refused refresh signs out. Both tokens DPAPI-protected in `session.json`; the password is
+   never stored; the `/user/me` body (third-party OAuth tokens) is never kept. The user id sent
+   to backend/1c is the JWT `sub` (what it compares). Sign-out is local, as the old app does.
+2. Companies from `{api}/company/` (all pages). Linking an infobase: pick the company's
+   existing 1C record (the old Connector's, preselected by name — keeps its data) or create
+   one (`POST {1c}/onec`, 409 → reuse). Links live in `links.json` per (env, user, base).
+3. Only the legacy status heartbeat (`PATCH /onec/connection/{id}` active/inactive every
+   60 s, inactive on close), and only for records this app created.
+
+**Not built, on purpose** (each needs the user): the connector WebSocket presence — it routes
+the cloud's writes for that oneCId to this app, which cannot run cloud commands yet, and
+announcing an existing record would pull a real client's write route away from their own
+connector (spec §9 q2–q3); sync upload to prod — a local copy uploaded into a real company's
+partition could overwrite or prune real data.
+
+**Evidence.** `OneC.CloudStub` copies the prod rules and error codes; `CloudTests` 20/20
+(phone forms, readable login errors, 429, refresh once, parallel calls share one refresh,
+refused refresh signs out, session per env, no token/password/OAuth token in any file,
+company paging, 409 duplicate, deleting records hidden, heartbeat only for created records).
+UI driven end to end against the stub (2026-09-30): sign-in, wrong password, companies, link
+dialog, record created, `active` after the 60 s beat, `inactive` on close. Nothing was sent to
+a real AIBA server.
+
+**Amended 2026-09-30 (user).** The link dialog became the old Connector's flow (Infobases = the
+header company's records, "Add infobase" = `POST /onec`). The user asked how to delete a record
+they had added, so **"Delete from AIBA"** was added as the old app has it (`DELETE
+/onec/connection/{id}`; backend/1c then purges the record *and all its synced data* — v2
+onec.py:171-201). It runs only from the user's click, after a confirmation that says it can't
+be undone; never from code or tests against a real server (stub only). The Sync column shows
+the cloud's own progress (`totalCount`, `percentage`, `lastError`) read-only — this app still
+uploads nothing; the two "not built" items above stand.
+
+## D42 — Sync engine: architecture approved, developer decisions (2026-09-30)
+
+**Decision.** `SYNC_ENGINE_ARCHITECTURE.md` is approved as the sync architecture; it replaces
+D39's stub-first engine (the milestone 5.9 `OneC.Sync`, deleted 2026-10-02, D48) rather than
+patching it. Implementation follows `SYNC_IMPLEMENTATION_PLAN.md` blocks S0–S15 in order. (Built
+under the working name "Sync Engine v2"; since D48 it is simply "Sync".) Developer decisions:
+
+- **D-1** No old + new Connector production sync against the same base / `oneCId` at the
+  same time. Default refuse; a developer override exists for controlled testing only.
+- **D-2** First real backend testing is the Python backend on dev/staging only. No
+  production sync until S15 is green and the developer explicitly approves it.
+- **D-3** Tables whose canonical row identity changes may be rebuilt at cut-over, per table,
+  each with explicit confirmation.
+- **D-4** Multi-organisation routing (S10) is required before production release. A
+  single-org pilot may be tested earlier.
+- **D-5** Python v2 target first. Python v3 is approved as a later, separate backend block
+  once the new sync engine is proven on the v2 target. No Rust target now.
+- **D-6** No hard-coded global refresh interval for independent information registers:
+  configurable per table, defaults chosen from S0/S9 measurements (5 min is only the
+  initial large-table candidate).
+- **D-7** Chart of accounts: keep. Stock snapshot and data coverage: keep only if an active
+  consumer is proven; never ported only for legacy parity.
+- **D-8** Drop the accounting-register night-only lane. Incremental accounting movements are
+  event-driven through `SyncRecorder`; cold snapshot work stays under scheduler budgets.
+  ЧекККМ manual-only stays only if it is a genuine product policy, not a performance
+  workaround.
+- **D-9** The unauthenticated `backend/1c` routes (audit B-3) are recorded as security bugs to
+  report to the backend owner. No production backend change in this project unless
+  separately approved.
+
+**Documentation corrections made with the approval.** (1) On the Python v2 target a
+sent-vs-reported row mismatch is a useful signal, but a matching total is **not** proof that
+every row was stored — the audit showed duplicate-key errors swallowed while inserts are
+over-reported. Recorded as a known v2 limitation (§18, K6). (2) The §15 worst-case example
+now respects `syncSessionsGlobal` = 6: 3 active bases × 3 server sessions request 9, the
+global cap admits 6. Budgets themselves unchanged.
+
+**Hard limits for all S-blocks.** No upload to production, no production backend change, no
+Rust target, no commit or push without the developer's word for that action.
+
+## D43 — Sync engine build notes, S0–S6 (2026-09-30)
+
+Engineering choices made while building (reversible, within D42's architecture):
+
+- **Sync-only host extras are opt-in** (`syncKeys`, `afterLine`, `afterKey`, `withVersion`;
+  new ops `versions`, `chart`). The old adapter's rows (D33/D34) stay byte-identical; parity tests
+  unchanged. Chart rows are the old `/api/charts` rows — 60/60 identical to the running old adapter.
+- **An object's `ВерсияДанных` comes from the same query as its row** (`withVersion`), not from a
+  later read: a later read could store a version newer than the row sent, and the verify pass would
+  then miss that change. It becomes the v3 `sourceVersion` too (8 bytes, big-endian, grows with
+  every write — S0).
+- **Verify pass and register refresh need no ordering**: `seen_run` stamps instead of a sorted
+  merge, because 1C orders refs by its own bytes, not the GUID text.
+- **Work items carry a generation**: a merge into an item that is running bumps it; completion or
+  dead-lettering then releases the item instead of deleting it — a delete that arrives while a
+  recorder sync runs is never lost.
+- **Chart of accounts is keyed by `Код`**; old Connector chart rows had no `__rowKey` (its
+  `RowIdentity` looked for `code`, the rows carry `Код`), so the chart joins the D-3 rebuild list.
+- **The new engine was built as `src/OneC.SyncV2`** (namespace `OneC.SyncV2`): a namespace
+  `OneC.SyncEngine` would have shadowed the old engine's `OneC.Sync.SyncEngine` class everywhere
+  under `OneC.*`. Since D48 the old engine is gone and the project is `src/OneC.Sync`.
+- **Snapshot readers only read**: mapping runs in its own stage so a 1C session never waits on JSON
+  work (with mapping on the reader, K=1 catalog throughput was 18–37 % below plain pipe reading;
+  after the split it matched it, 2 173 vs 2 152 rows/s). What remains between the pipe and the
+  in-process walk (~2 200 vs 3 163 rows/s on ДоговорыКонтрагентов) is the host → supervisor hop
+  itself (JSON over the pipe, parsed, re-serialised), which the old `sync` mode pays as well.
+
+## D44 — Sync engine build notes, S7–S15 (2026-09-30)
+
+Found by the S12–S15 tests, fixed in the engine (each with a test that failed first):
+
+- **A restarted engine drains its feed once at start.** The stat poller only sees growth from its
+  own first look on, so a restart left the stored cursor far behind the log until the log grew
+  again (S15 kill test: cursor 51 KB behind, engine "idle"). Cost: one stat and a zero-byte read.
+- **Leases are released at engine start** (one engine owns a sync.db, so any lease then belongs to
+  a dead process): after a kill, items were locked for their 5-minute lease; convergence 195–266 s
+  → 9 s in the kill test.
+- **An item due now answers `DateTimeOffset.MinValue`, not "now"** — "now" was read after the
+  scheduler's tick time, so a retried dead letter was never due.
+- **Outages wait in the queue, not in memory.** The uploader retries a blip 3 times (1 s, 2 s);
+  the executor stops a run after two rounds that only failed, so one base does not hold a slot
+  while the backend is down (S15: 31 s per item before).
+- **A log reset during a first copy goes to Recovery and then back to Snapshot** for the tables
+  not copied yet — the verify pass follows catalogs and documents, not registers. The next mode
+  is committed together with the adopted cursor (no moment of a wrong "Incremental").
+- **A delete is always sent**, even for an object the engine has no record of sending. A shortcut
+  that skipped "never sent" objects (1 282 create-and-delete pairs in KAN's September log) was
+  wrong: the 50-kill test found an upload that landed while the process died before the version
+  was stored, and the later delete skipped it — a stale document in the cloud. Instead the v2
+  target reads backend/1c's "nothing stored … refusing to prune" as "already gone".
+- **The stub emulates v2's real prune cap**: `max(1, int(stored × 0.05))` (backend/1c
+  `prune_missing_rows`), so one delete is always allowed; the old floor made single deletes look
+  refused.
+
+backend/1c v2 facts that shape the Python target (read-only look at `backend/1c`, nothing changed there):
+
+- every `InformationRegister_*` is a movement table (`onec_scope.py`), independent ones too; the
+  router follows the backend, org-less independent rows go to the shared partition, counted;
+- `totalSkipped = totalItems − totalInserted`, so the reported total always "matches" — confirmed
+  by the contract test (2 reported, 1 stored for a duplicate key);
+- no per-table purge for a user token and `/refids` lists ids only: a D-3 rebuild of a register
+  table needs a backend purge (today its fleet-resync runbook); the engine refuses such a rebuild
+  on v2 instead of leaving old-keyed rows next to new ones;
+- `connection_state` ≠ `offline` = a connector socket serves the base → D-1 presence;
+- **security (D-9 list):** `POST /api/v2/onec/connection/rebuild` has no auth dependency and,
+  without `oneCId`, deletes every connection's cached metrics and counts.
+
+## D45 — Live tests that open a second SessionManager run in a child process; the release gate refuses hidden skips (2026-10-01)
+
+**Context.** The full Release suite (414 tests) aborted in 2 of 4 clean runs: the test host itself
+died with `0xC0000374` (heap corruption) at ntdll+`0x117eb5` — the known 1C-internal crash (the
+old oscript adapter hits it at the same offset; MIGRATION_STATUS known limits). It is only ever
+seen in processes that open a **second** SessionManager next to the fixture's — a process
+arrangement production never has (one host, one manager) — and its rate grew with the suite (1 in
+~12 runs at 252 tests). It could not be reproduced outside the test runner (sequential managers
+with forced finalisers, concurrent eviction, two concurrent managers: no mid-run crash).
+
+**Decision.** The 6 live tests that build their own SessionManager (`MultiBaseTests` ×4,
+`ConnectionLifecycleLiveTests` ×2) run as scenarios of `tests/OneCLiveChild`, one process each
+(`LiveChild.Run`): a native crash fails that one test with its exit code instead of destroying the
+whole run. The harness reads output asynchronously (a child stuck in 1C's exit cannot hang the test),
+kills the tree at a 4-minute limit, passes the base list only through the inherited
+`ONEC_TEST_BASES` path (never the command line), and the child ends through `NativeProcess.Exit`;
+`LiveChildTests` prove pass / reported failure / native crash / hang-killed and that no child
+survives. **Only** these 6 are isolated: every other live test uses the one fixture manager, like
+production. `PressureEvicts…` now checks its rule (quiet base evicted, no self-eviction, no errors,
+file sessions ≤ the cap of 2) — the exact count of 1 depended on the process working set.
+
+**Hidden skips.** Tests whose environment is missing return early and count as passed (the
+developer-run convention). In the release gate (`AIBA_TEST_GATE=1`) that is refused: the live
+fixture throws without a base list / server base / file base, and the data- or backend-dependent
+early returns go through `Gate.Skip` (13 places: the three Python-target tests, schema / register /
+install checks, and four loops that could end having compared nothing). 2026-10-01: the two Python-target tests had "passed" in a
+414/414 run without a backend.
+
+## D46 — Sync against backend/1c's real semantics (2026-10-01 review of the Python target)
+
+Read from `origin/development` (`ed32c71`), proved on the isolated local backend running that code:
+
+- **Every target call stays in the partition it names (`scope=self`).** backend/1c's
+  `scope=connection` widens reconcile and prune to every partition of the base, keeping only the
+  keys sent. The engine reconciles each partition with that partition's live keys and always
+  touches the shared one — so on a multi-organisation base every post/repost deleted the movements
+  it had just uploaded to the organisation's partition (reproduced:
+  `AReconcileOrPruneOfTheSharedPartitionLeavesAnOrganisationsRowsAlone` failed, then passed).
+  Because calls no longer widen, an object whose partition history is unknown is deleted /
+  reconciled in **every** partition (`IPartitioner.All`), and a multi-organisation snapshot records
+  the partition of every document and recorder (`object_partitions`).
+- **Table names are the backend's.** Two registers carry `_RecordType`
+  (`AccountingRegister_Хозрасчетный_RecordType`, `AccumulationRegister_СебестоимостьПродажи_RecordType`
+  — backend/1c PROVIDER_MAPPINGS, connector config.ts), others do not (`BackendTableNames`); the
+  1C name to read stays plain. Movement classification follows the backend's rule by family
+  (documents and every register are movement tables), overriding the config.
+- **`sync-tables` is `[{table, reports}]` or `null`** (nothing stored yet ≠ "no table allowed").
+- A 400 "not found" (also a failed Mongo lookup in `get_onec_with_ownership`) is retried, never a
+  dead letter; a 409 "being deleted" from one **binding** is retried (bindings are re-read), only
+  the connection itself pauses the base; one row over the edge's size limit is a dead letter
+  instead of a retry forever.
+- Known, not solved client-side: v2 over-reports inserts when it swallows a duplicate key (the
+  reported total always "matches"); `/counts` is the backend's counter, not a read-back — S12 proof
+  of storage is reading every row back (`sync-verify`) or, on the isolated instance, counting in Mongo.
+
+## D47 — S12 shared-dev guards (2026-10-01)
+
+S12 runs only against `aiba-1c-dev.aiba.uz` (`DevBackend.Root`; `*.aiba.group` refused in code),
+with the token of the app's Development session (`CloudClient` refresh on 401; nothing writes a
+token). The engine refuses to start unless the record's name **and** odataName start with
+`SYNC-TEST` (the odataName is the old Connector's key to a local base, so no old Connector picks
+it up) and its `connection_state` is `offline`; `allowWithOldConnector` and table rebuilds are
+refused on dev; one base, one record per run. Failure tests inject faults locally
+(`HttpFaults`: 503, dropped connection, bad token → the backend's own 401, 400 on the next upload;
+crash after upload before local completion), armed only with `faults: true` on a non-stub target.
+Runbook: `DEV_SYNC_TEST_RUNBOOK.md`.
+
+## D48 — One canonical Sync engine; "Sync v2" naming retired (2026-10-02)
+
+**Decision.** The new Connector has one canonical Sync engine. It was built as "Sync Engine v2"
+(D42) beside the milestone 5.9 engine (D39) only to keep the two apart. The 5.9 engine is
+deleted (recoverable from git commit `f81489e`): the project `src/OneC.Sync` (`SyncEngine`,
+`SyncScheduler`, `StubBackend`, `SyncTable`, `RowIdentity`, `UploadTarget`, `IOneCSource`),
+`src/OneC.Supervisor/SyncMode.cs` (the `OneC.Supervisor sync --tables …` CLI) and
+`SupervisorSource.cs`, `tests/OneC.Tests/SyncTests.cs`, the old `run --sync-config` wiring and its
+`GET /v1/sync` status route. D39 is superseded by D42. The new engine takes the plain names:
+
+| Old | New |
+|---|---|
+| project / namespaces `src/OneC.SyncV2`, `OneC.SyncV2.*` | `src/OneC.Sync`, `OneC.Sync.*` |
+| Supervisor `Sync2Mode` / `Sync2Bench` / `Sync2Dev` / `Sync2Verify`, `EdgeServer.Sync2` | `SyncMode` / `SyncBench` / `SyncDev` / `SyncVerify`, `EdgeServer.Sync` |
+| CLI `run --sync2-config`, `sync2-snapshot`, `sync2-dev`, `sync2-verify --sync2-config` | `run --sync-config`, `sync-snapshot`, `sync-dev`, `sync-verify --sync-config` |
+| edge routes `/v1/sync2/*` | `/v1/sync/*` |
+| desktop config file `sync2.json` | `sync.json` |
+| `ui.json` key `syncV2Preview`, `App.SyncV2Preview` | `syncPreview`, `App.SyncPreview` |
+| `EdgeClient.Sync2Status` / `Sync2Tables` / … | `SyncStatus` / `SyncTables` / … |
+| UI text "Sync engine v2" | "Sync" |
+| tests `SyncV2…Tests` | `Sync…Tests` |
+| env vars `AIBA_SYNCV2_BACKEND` / `AIBA_SYNCV2_SECRETS` | `AIBA_SYNC_BACKEND` / `AIBA_SYNC_SECRETS` |
+| dev test-record prefix `SYNCV2-TEST` | `SYNC-TEST` (no dev record was ever created with the old prefix) |
+| local test Mongo db `aiba_1c_syncv2_test` | `aiba_1c_sync_test` |
+| `research/sync-v2-spikes`, `measurements/sync-v2-s0`, `measurements/sync-v2-s12-dev` | `research/sync-spikes`, `measurements/sync-s0`, `measurements/sync-s12-dev` |
+| `SYNC_V2_ARCHITECTURE.md`, `SYNC_V2_IMPLEMENTATION_PLAN.md` | `SYNC_ENGINE_ARCHITECTURE.md`, `SYNC_IMPLEMENTATION_PLAN.md` |
+
+**Compatibility.** `ui.json` `syncV2Preview` is read once and written back as `syncPreview`.
+`sync2.json` is deleted on the next start (the config file is rewritten every start). No CLI alias
+for `--sync2-config`: nothing outside the repo used it.
+
+**Behaviour unchanged.** Pure rename and removal of dead code. "v2" remains only for the Python
+backend protocol (`/api/v2/...`, the Python v2 target, `StubMode.V2`).
+
+## D49 — Live tests that write 1C next to OneC.Host processes also run in a child (2026-10-02)
+
+**Decision.** D45's child-process isolation is widened from "opens a second SessionManager" to
+also "writes 1C through a SessionManager while OneC.Host processes read the same base". Today that
+is `SyncLiveTests.ATestDocumentsWholeLifeReachesTheStubExactly` and
+`…TheEngineRunsInTheSupervisorAndIsControlledThroughTheEdge` (`OneCLiveChild` scenarios
+`sync-lifecycle`, `sync-edge`; steps and checks unchanged). Their test documents carry a run tag
+(`AIBA_REWRITE_S8_<tag>`, `AIBA_REWRITE_S13_<tag>`); when such a child fails or dies, a second child
+(`cleanup-owned`) deletes exactly that run's documents and refuses any other prefix. The harness
+waits for the OneC.Host processes a child's Supervisor started (they end when its pipes close) and
+never kills them; a hung child is killed alone, not with its process tree (AGENT.md: never kill a
+stalled 1C process). The other live tests stay in the suite's process — they read 1C, or write it
+with no OneC.Host on the same base, and have not crashed it.
+
+**Evidence.** After the D48 rename the suite's own process died of `0xC0000374` (ntdll+0x117eb5)
+three runs out of four, inside exactly these two tests (runs 3 and 4 identified with
+`--blame-crash`). Moved to children: 5 rounds of the child tests had one `sync-lifecycle` crash —
+the one test failed, the run went on, the fallback cleanup removed its document; 10 more
+`sync-lifecycle` runs were clean. Then two consecutive full gate runs 417/417 (MIGRATION_STATUS).
+
+**Still open.** The crash is inside 1C and not reproduced on demand (~1 in 15 lifecycle runs).
+A native dump needs WER LocalDumps (machine-wide) or a debugger install — the developer's call.
+Production is not affected the same way: there, 1C runs only in OneC.Host processes, which the
+Supervisor restarts.
+
+`quiet-base` (MultiBaseTests) checks the rule — the quiet base's idle session retires within
+30 s, the busy base never loses its own, caps and budget hold, no read errors — instead of one
+count taken 4.5 s after a clock that included KAN's cold Connect.
+
+## D50 — Sync always runs; no Settings switch (2026-10-03)
+
+**Decision (user, 2026-10-03: "that new way of sync should be a default thing, not you can turn on
+in settings").** The desktop app starts the sync engine for every connected base on every start.
+The Settings → Preview → Sync switch, `App.SyncPreview` and the `ui.json` keys `syncPreview` /
+`syncV2Preview` are gone (an old `ui.json` keeps the key; nothing reads it). The base screen no
+longer has a "Sync is off" state.
+
+**Unchanged.** The target is still the local test target (`target: "stub"` in `sync.json`):
+nothing is uploaded to AIBA until the developer's go (D-2). The base screen says so: "For now sync
+copies to a test target on this computer. Nothing is sent to AIBA yet." Pause per base stays.
+
+**Verified.** Fresh data folder with no `ui.json`, bilim imported: the app wrote `sync.json`, the
+engine reached "Up to date" (5 of 5 tables) with no setting; Settings shows only Browse 1C data
+(`measurements/shots/2026-10-03/`).

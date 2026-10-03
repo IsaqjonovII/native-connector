@@ -7,14 +7,13 @@
     <PlatformTarget>x64</PlatformTarget>
     <InvariantGlobalization>false</InvariantGlobalization>
     <NoWarn>CA1416</NoWarn>
+    <RootNamespace>OneC.Sync</RootNamespace>
   </PropertyGroup>
-  <!-- 1C → cloud sync (milestone 5.9, D39). No COM: it reads through the supervisor's pipe
-       ops and change feed, and uploads over HTTP. The stub backend lives here too, so tests
-       and the supervisor's `sync` mode use the same contract. -->
+  <!-- The Connector's sync engine (SYNC_ENGINE_ARCHITECTURE.md, D42). Runs in the Supervisor: no
+       COM — 1C is reached through the host's pipe ops, the backend only through IBackendSyncTarget. -->
   <ItemGroup>
-    <FrameworkReference Include="Microsoft.AspNetCore.App" />
-  </ItemGroup>
-  <ItemGroup>
+    <ProjectReference Include="..\OneC.SyncState\OneC.SyncState.csproj" />
+    <ProjectReference Include="..\OneC.Sync.Abstractions\OneC.Sync.Abstractions.csproj" />
     <ProjectReference Include="..\OneC.EventLog\OneC.EventLog.csproj" />
   </ItemGroup>
 </Project>

@@ -158,6 +158,30 @@ public sealed class BaseStore
             .ToList();
     }
 
+    /// <summary>
+    /// The old Connector's saved login for a base (<c>databases.&lt;name&gt;</c>, keyed by the
+    /// launcher name), to fill in the Connect form; null when it has none. Read-only.
+    /// </summary>
+    public static (string User, string Password, string Version)? OldConnectorLogin(string name)
+    {
+        foreach (var path in FindOldConnectorConfigs())
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(File.ReadAllText(path));
+                if (!doc.RootElement.TryGetProperty("databases", out var dbs) || dbs.ValueKind != JsonValueKind.Object) continue;
+                foreach (var db in dbs.EnumerateObject())
+                {
+                    if (!db.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) continue;
+                    string S(string k) => db.Value.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
+                    return (S("user"), S("password"), S("comVersion"));
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { }
+        }
+        return null;
+    }
+
     public sealed record ImportReport(int Imported, List<string> Skipped);
 
     /// <summary>

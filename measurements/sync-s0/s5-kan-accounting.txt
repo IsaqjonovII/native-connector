@@ -1,0 +1,8 @@
+kansler reg_accounting Хозрасчетный from 2025-09-30: 1C count 3041855, K=1, page 500
+outcome Complete: read 249148, accepted 249148, stub 249148 rows, 1097,5 s = 227 rows/s; slices 1
+uploaded 249148 rows / 381,1 MB, v2 count mismatches 0, byte budget peak 0,8 MB, uploads in flight peak 1
+peak memory: supervisor private 177 MB; host ws 268 MB, private 195 MB
+kansler reg_accounting Хозрасчетный from 2025-09-30: 1C count 3041855, K=4, page 500
+outcome Complete: read 249148, accepted 249148, stub 249148 rows, 191,5 s = 1301 rows/s; slices 4
+uploaded 249148 rows / 381,1 MB, v2 count mismatches 0, byte budget peak 3,1 MB, uploads in flight peak 2
+peak memory: supervisor private 166 MB; host ws 561 MB, private 497 MB

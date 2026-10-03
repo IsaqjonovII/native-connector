@@ -119,7 +119,7 @@ public class SupervisorLiveTests
     public void SpawnsOneHostPerPlatformAndEachReportsItsOwnVersion()
     {
         if (!_f.Available || _f.Server is null || _f.File is null) return;
-        if (!PlatformCatalog.Discover().Any(i => i.Version == "8.3.18.1289")) return;
+        if (Gate.Skip(!PlatformCatalog.Discover().Any(i => i.Version == "8.3.18.1289"), "1C 8.3.18.1289 is not installed")) return;
         var bases = new List<OneCBase> { _f.Server, _f.File with { PlatformVersion = "8.3.18.1289" } };
 
         using var s = New();

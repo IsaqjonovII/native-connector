@@ -1,0 +1,37 @@
+  express                                  D:\1C\express\1Cv8Log
+  garbi                                    D:\1C\garbi\1Cv8Log
+  uic                                      D:\1C\uic\1Cv8Log
+  imkon                                    D:\1C\imkon\1Cv8Log
+  bus biznes nur                           D:\1C\бус бизнес !\1Cv8Log
+  United IT Company Test 1.3               D:\1C\United IT Company Test 1.3\1Cv8Log
+  TEST 1.3                                 no_log_dir
+  tent                                     D:\1C\tent\1Cv8Log
+  prime-holding                            D:\1C\prime-holding\1Cv8Log
+  bilim                                    D:\1C\bilim\1Cv8Log
+  zam bas                                  D:\1C\zam bas\1Cv8Log
+  opec                                     D:\1C\opec\1Cv8Log
+  khanchapan                               D:\1C\khanchapan\1Cv8Log
+  gs                                       D:\1C\gs\1Cv8Log
+  entertainment                            D:\1C\entertainment\1Cv8Log
+  pv consult                               D:\1C\pv consult\1Cv8Log
+  kansler                                  D:\1C\kansler\1Cv8Log
+  KAN                                      C:\Program Files\1cv8\srvinfo\reg_1541\71990e64-b651-4a71-9b88-04242b40e214\1Cv8Log
+  global                                   D:\1C\global\1Cv8Log
+  prof-muhamedov                           D:\1C\prof-muhammedov\1Cv8Log
+  decor                                    D:\1C\decor\1Cv8Log
+  vision                                   D:\1C\vision\1Cv8Log
+  Kanstik                                  C:\Program Files\1cv8\srvinfo\reg_1541\c1a2cd0b-c87e-439a-ab92-1e3e43f33503\1Cv8Log
+  signum                                   C:\Program Files\1cv8\srvinfo\reg_1541\279f25ec-73c3-4b00-b9b6-6d31803d0bda\1Cv8Log
+23 bases with a readable log
+start: ws 31 MB, private 8 MB, handles 277, threads 8
+min  1: cpu 0,021 % of the machine, ws 34 MB, private 8 MB, handles 303, threads 11, stats 23, activations 0, sync leases 0
+min  2: cpu 0,019 % of the machine, ws 34 MB, private 8 MB, handles 310, threads 11, stats 68, activations 7, sync leases 0
+min  3: cpu 0,014 % of the machine, ws 34 MB, private 8 MB, handles 318, threads 10, stats 124, activations 14, sync leases 0
+min  4: cpu 0,013 % of the machine, ws 34 MB, private 9 MB, handles 322, threads 10, stats 180, activations 24, sync leases 0
+min  5: cpu 0,012 % of the machine, ws 35 MB, private 9 MB, handles 328, threads 12, stats 236, activations 30, sync leases 0
+min  6: cpu 0,011 % of the machine, ws 35 MB, private 9 MB, handles 331, threads 11, stats 292, activations 36, sync leases 0
+min  7: cpu 0,010 % of the machine, ws 36 MB, private 9 MB, handles 337, threads 10, stats 348, activations 44, sync leases 0
+min  8: cpu 0,009 % of the machine, ws 36 MB, private 10 MB, handles 337, threads 9, stats 404, activations 50, sync leases 0
+min  9: cpu 0,009 % of the machine, ws 36 MB, private 10 MB, handles 340, threads 9, stats 457, activations 57, sync leases 0
+min 10: cpu 0,009 % of the machine, ws 37 MB, private 11 MB, handles 353, threads 12, stats 513, activations 63, sync leases 0
+activations by base: KAN 61, signum 1, Kanstik 1

@@ -1,0 +1,11 @@
+kansler catalog ДоговорыКонтрагентов: 1C count 116759, K=1, page 500
+outcome Complete: read 116759, accepted 116759, backend 116759 rows, 57,1 s = 2044 rows/s; slices 1
+uploaded 116759 rows / 272,6 MB, v2 count mismatches 0, byte budget peak 2,3 MB, uploads in flight peak 2
+peak memory: supervisor private 115 MB; host ws 247 MB, private 178 MB
+
+# 2026-10-01 23:3x, after the upload-buffer fix (one exactly-sized buffer, no ToArray copy), isolated local backend/1c (port 18041, db aiba_1c_syncv2_test).
+# "backend 116759 rows" above is backend/1c's /counts (its own counter) — NOT proof of storage. Real storage, counted in the isolated Mongo:
+#   docker exec aiba-1c-local-mongo mongosh aiba_1c_syncv2_test: entitydatas where oneCId = 6abea77fdf78252521123d28, tableName = catalog_ДоговорыКонтрагентов
+#   → {"storedRows":116759,"distinctRowKeys":116759,"rowsWithoutKey":0}  = 1C COUNT 116759.
+# Previous run (2026-09-30, before the fix): 71.8 s = 1 625 rows/s, supervisor 118 MB (s12-local-backend.txt; its "read back" was the same /counts number).
+# Note 2026-10-02 (D48): this run used the db name aiba_1c_syncv2_test, as recorded above; new runs use aiba_1c_sync_test.

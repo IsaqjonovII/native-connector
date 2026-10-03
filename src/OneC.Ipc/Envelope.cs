@@ -17,6 +17,16 @@ public static class Ops
     public const string Document = "document";
     public const string Register = "register";
     public const string Slices = "slices";
+    /// <summary>Sync:(id, ВерсияДанных) of a catalog/document table — a keyset page or a list of ids.</summary>
+    public const string Versions = "versions";
+    /// <summary>Sync:chart of accounts rows, the old <c>/api/charts/{name}</c> shape.</summary>
+    public const string Chart = "chart";
+    /// <summary>Sync:document types that write movements to a register.</summary>
+    public const string Recorders = "recorders";
+    /// <summary>Sync:which document type a recorder GUID belongs to, among registers' recorder types.</summary>
+    public const string RecorderOf = "recorderOf";
+    /// <summary>Sync:every catalog, document, chart of accounts and register of the configuration.</summary>
+    public const string Tables = "tables";
     public const string Create = "create";
     public const string Update = "update";
     public const string Post = "post";
@@ -80,6 +90,13 @@ public sealed record IpcError
 
     /// <summary>Set for refusals the HTTP edge maps to 403 / 404 / 422 (IPC_CONTRACT.md §7).</summary>
     public string? Kind { get; init; }
+
+    /// <summary>
+    /// With <see cref="ErrorKinds.NotFound"/>: <c>object</c> (the table exists, this GUID does not —
+    /// the only not-found a sync may turn into a delete) or <c>metadata</c> (no such table / base).
+    /// Sync §10: "definitely not found" vs "unknown" (fixes P6).
+    /// </summary>
+    public string? NotFoundScope { get; init; }
 
     /// <summary>Structured details of a refused write: <c>fillDiagnostics</c>, the document name, … (D38).</summary>
     public System.Text.Json.Nodes.JsonNode? Data { get; init; }

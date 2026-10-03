@@ -91,6 +91,45 @@ public sealed class EdgeClient : IDisposable
         return await Unwrap<JsonObject>(r, ct);
     }
 
+    // ---------------- Sync (IPC_CONTRACT §7 /v1/sync) ----------------
+
+    public Task<JsonArray> SyncStatus(CancellationToken ct = default) => GetArray("/v1/sync", ct);
+
+    /// <summary>Every table of the base's 1C configuration the sync engine can copy (cached by the host).</summary>
+    public async Task<JsonArray> OneCTables(string baseName, CancellationToken ct = default) =>
+        (await GetObject($"/v1/bases/{Uri.EscapeDataString(baseName)}/tables", ct))["tables"] as JsonArray ?? new JsonArray();
+
+    /// <summary>The given tables with their engine family and movement flag read from 1C (for adding them to sync).</summary>
+    public async Task<JsonArray> OneCTableDetails(string baseName, IEnumerable<string> tables, CancellationToken ct = default) =>
+        (await GetObject($"/v1/bases/{Uri.EscapeDataString(baseName)}/tables?details={Uri.EscapeDataString(string.Join(",", tables))}", ct))["tables"] as JsonArray
+        ?? new JsonArray();
+
+    public Task<JsonArray> SyncTables(string baseName, CancellationToken ct = default) =>
+        GetArray($"/v1/sync/bases/{Uri.EscapeDataString(baseName)}/tables", ct);
+
+    public Task<JsonArray> SyncDeadLetters(string baseName, CancellationToken ct = default) =>
+        GetArray($"/v1/sync/bases/{Uri.EscapeDataString(baseName)}/dead-letters", ct);
+
+    public Task<JsonObject> SyncPause(string baseName, CancellationToken ct = default) => PostObject($"/v1/sync/bases/{Uri.EscapeDataString(baseName)}/pause", ct);
+    public Task<JsonObject> SyncResume(string baseName, CancellationToken ct = default) => PostObject($"/v1/sync/bases/{Uri.EscapeDataString(baseName)}/resume", ct);
+    public Task<JsonObject> SyncRetry(long id, CancellationToken ct = default) => PostObject($"/v1/sync/dead-letters/{id}/retry", ct);
+    public Task<JsonObject> SyncApprove(long id, CancellationToken ct = default) => PostObject($"/v1/sync/dead-letters/{id}/approve", ct);
+    public Task<JsonObject> SyncDismiss(long id, CancellationToken ct = default) => PostObject($"/v1/sync/dead-letters/{id}/dismiss?who=desktop", ct);
+
+    /// <summary>D-3: only with the user's confirmation for this table. The answer says why when it cannot be done (409).</summary>
+    public async Task<(bool Ok, string Message)> SyncRebuild(string baseName, string table, CancellationToken ct = default)
+    {
+        using var r = await _http.PostAsync($"/v1/sync/bases/{Uri.EscapeDataString(baseName)}/tables/{Uri.EscapeDataString(table)}/rebuild?confirm=true", null, ct);
+        var node = await JsonNode.ParseAsync(await r.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+        return (node?["ok"]?.GetValue<bool>() == true, node?["message"]?.GetValue<string>() ?? $"HTTP {(int)r.StatusCode}");
+    }
+
+    private async Task<JsonObject> PostObject(string path, CancellationToken ct)
+    {
+        using var r = await _http.PostAsync(path, null, ct);
+        return await Unwrap<JsonObject>(r, ct);
+    }
+
     private async Task<JsonArray> GetArray(string path, CancellationToken ct)
     {
         using var r = await _http.GetAsync(path, ct);

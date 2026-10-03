@@ -1,0 +1,2 @@
+20260901000000.lgp: 2693 MB in 59,2 s = 45 MB/s; 339 reads, 440575 data events  1479 upserts, pending items 1473 (delete_object 1282, sync_recorder 90, sync_object 100, refresh_register 1)
+peak private 98 MB; reader unknown ids 0; sync.db 0,0 MB

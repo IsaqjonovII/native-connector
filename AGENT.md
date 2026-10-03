@@ -142,6 +142,16 @@ Full evidence in `DECISIONS.md`. In short:
 
 - Run the thing. A claim of done/fixed/working needs the command and its output.
 - Unit tests must pass without 1C. Live tests must pass with `ONEC_TEST_BASES` set.
+- **Release gate** (D45): clean Release build, then the full suite with `AIBA_TEST_GATE=1`,
+  `ONEC_TEST_BASES`, and the isolated local backend/1c up (`AIBA_SYNC_BACKEND`,
+  `AIBA_SYNC_SECRETS`) — in gate mode a test whose environment is missing fails instead of
+  returning early as "passed" (`Gate.Skip`, the fixture's `RequireForGate`). Two consecutive
+  clean runs, then 0 leftover processes and 0 `AIBA_REWRITE_` documents.
+- A live test that opens a SessionManager of its own, or writes 1C while OneC.Host processes read
+  the same base, runs as a `tests/OneCLiveChild` scenario (`LiveChild.Run`, D45/D49): 1C's heap
+  corruption in such processes (`0xC0000374`) must fail one test, not abort the run. A writing
+  scenario tags its documents per run and its test calls `LiveChild.CleanupOwned` when it fails.
+  Every other live test uses the fixture's manager, as production uses one.
 - Every new 1C-facing path needs: a happy-path live test, an error-path live test, and a
   COM-leak check (`ComRef.Live` does not grow; `WrongThreadReleases` delta is 0).
 - Live tests share process-wide counters and a background sweeper — assert deltas and end

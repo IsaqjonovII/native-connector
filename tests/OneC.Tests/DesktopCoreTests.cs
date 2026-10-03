@@ -6,6 +6,34 @@ namespace OneC.Tests;
 
 public class DesktopCoreUnitTests
 {
+    [Theory]
+    [InlineData("kontr", "Контрагенты")]
+    [InlineData("КОНТР", "Контрагенты")]
+    [InlineData("xozraschet", "Хозрасчетный")]
+    [InlineData("hozraschyotniy", "Хозрасчетный")]
+    [InlineData("realizaciya", "РеализацияТоваровУслуг")]
+    [InlineData("realizatsiya tovarov", "РеализацияТоваровУслуг")]
+    [InlineData("postuplenie na raschetniy", "ПоступлениеНаРасчетныйСчет")]
+    [InlineData("nomenklatura", "Номенклатура")]
+    [InlineData("schet faktura", "СчетФактураВыданный")]
+    [InlineData("jurnal", "ЖурналОпераций")]
+    [InlineData("zhurnal", "ЖурналОпераций")]
+    [InlineData("yoqilgi", "Ёқилғи")]
+    public void TranslitFindsCyrillicFromLatin(string query, string name) => Assert.True(Translit.Score(query, name) > 0);
+
+    [Theory]
+    [InlineData("kontr", "Номенклатура")]
+    [InlineData("realizaciya uslug sklad", "РеализацияТоваровУслуг")]
+    public void TranslitDoesNotMatchOtherNames(string query, string name) => Assert.Equal(0, Translit.Score(query, name));
+
+    [Fact]
+    public void TranslitRanksNameStartAboveSynonymContains()
+    {
+        int start = Translit.Score("bank", "БанковскиеСчета", "Счета в банках");
+        int synonymOnly = Translit.Score("bank", "СчетаОрганизаций", "Счета в банках");
+        Assert.True(start > synonymOnly && synonymOnly > 0, $"{start} vs {synonymOnly}");
+    }
+
     [Fact]
     public void ConnectionStringRoundTripsQuotesAndCyrillic()
     {
@@ -29,6 +57,29 @@ public class DesktopCoreUnitTests
         var p = BaseStore.ParseConnectionString(b.ConnectionString(""));
         Assert.Equal(@"D:\1C\bilim", p["file"]);
         Assert.False(p.ContainsKey("srvr"));
+    }
+
+    [Fact]
+    public void LauncherListGivesEachBaseItsKindFromTheConnectLine()
+    {
+        string file = Path.Combine(Path.GetTempPath(), "aiba-v8i-" + Guid.NewGuid().ToString("N") + ".v8i");
+        try
+        {
+            // The 1C launcher writes UTF-8 with a BOM, CRLF, and folder groups without Connect.
+            File.WriteAllText(file,
+                "[бус бизнес]\r\nConnect=File=\"D:\\1C\\бус бизнес !\";\r\nID=1\r\nVersion=8.3\r\n" +
+                "[Group]\r\nFolder=/\r\n" +
+                "[KAN]\r\nConnect=Srvr=\"WIN-11-2070\";Ref=\"KAN\";\r\n" +
+                "[IMKON-WEB]\r\nConnect=ws=\"http://127.0.0.1:9970/IMKON\";\r\n",
+                new System.Text.UTF8Encoding(true));
+            var list = LauncherBases.Read(file);
+            Assert.Equal(new[] { "бус бизнес", "KAN", "IMKON-WEB" }, list.Select(b => b.Name));
+            Assert.Equal((LauncherKind.File, @"D:\1C\бус бизнес !"), (list[0].Kind, list[0].FilePath));
+            Assert.Equal((LauncherKind.Server, "WIN-11-2070", "KAN"), (list[1].Kind, list[1].Server, list[1].Ref));
+            Assert.Equal((LauncherKind.Web, "http://127.0.0.1:9970/IMKON"), (list[2].Kind, list[2].Url));
+            Assert.Empty(LauncherBases.Read(file + ".missing"));
+        }
+        finally { File.Delete(file); }
     }
 
     [Fact]

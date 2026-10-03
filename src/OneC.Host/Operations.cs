@@ -20,6 +20,10 @@ public sealed class Operations
     private readonly DocumentReadService _documents;
     private readonly RegisterReadService _registers;
     private readonly SlicePlanner _slices;
+    private readonly VersionReadService _versions;
+    private readonly ChartReadService _charts;
+    private readonly RecorderMetadata _recorders;
+    private readonly TableCatalog _tables;
     private readonly WriteService _writes;
     private readonly DocumentWriter _documentWriter;
     private readonly DateTime _startedUtc = DateTime.UtcNow;
@@ -32,6 +36,10 @@ public sealed class Operations
         _documents = new DocumentReadService(m);
         _registers = new RegisterReadService(m);
         _slices = new SlicePlanner(m);
+        _versions = new VersionReadService(m);
+        _charts = new ChartReadService(m);
+        _recorders = new RecorderMetadata(m);
+        _tables = new TableCatalog(m);
         _writes = new WriteService(m, writePrefix);
         _documentWriter = new DocumentWriter(_writes);
     }
@@ -110,6 +118,20 @@ public sealed class Operations
             Ops.Document => DocumentOp(r, a, ct),
             Ops.Register => RegisterOp(r, a, ct),
             Ops.Slices => SlicesOp(r, a, ct),
+            Ops.Versions => VersionsOp(r, a, ct),
+            Ops.Chart => ChartOp(r, a, ct),
+            Ops.Recorders => IpcJson.ToNode(new { types = _recorders.RecorderTypes(Base(r), Kind(Str(a, "kind")), Str(a, "register"), ct) }),
+            Ops.RecorderOf => IpcJson.ToNode(new
+            {
+                type = _recorders.RecorderOf(Base(r), (a["registers"] as JsonArray ?? throw new ArgumentException("'registers' missing"))
+                    .Select(n => (Kind(n!["kind"]!.GetValue<string>()), n["register"]!.GetValue<string>())).ToList(), Str(a, "id"), ct)
+            }),
+            Ops.Tables => IpcJson.ToNode(new
+            {
+                tables = a["details"] is JsonArray d
+                    ? _tables.Details(Base(r), d.Select(n => n!.GetValue<string>()).ToList(), ct)
+                    : _tables.List(Base(r), ct)
+            }),
             Ops.Test => TestOp(r, ct),
             Ops.Create => CreateOp(r, a, ct),
             Ops.Update => UpdateOp(r, a, ct),
@@ -160,8 +182,9 @@ public sealed class Operations
     private JsonNode? CatalogOp(IpcRequest r, JsonObject a, CancellationToken ct)
     {
         string catalog = Str(a, "catalog");
+        bool withVersion = a["withVersion"]?.GetValue<bool>() ?? false;
         if (a["id"]?.GetValue<string>() is { Length: > 0 } id)
-            return IpcJson.ToNode(new { row = _catalogs.ById(Base(r), catalog, id, ct) });
+            return IpcJson.ToNode(new { row = _catalogs.ById(Base(r), catalog, id, ct, withVersion) });
 
         var page = _catalogs.List(Base(r), new CatalogQuery
         {
@@ -171,7 +194,8 @@ public sealed class Operations
             Fields = a["fields"] is JsonArray f ? f.Select(n => n!.GetValue<string>()).ToArray() : null,
             Filters = a["filters"] is JsonObject fo ? Scalars(fo, "filter") : null,
             After = a["after"]?.GetValue<string>(),
-            SkipTotal = a["skipTotal"]?.GetValue<bool>() ?? false
+            SkipTotal = a["skipTotal"]?.GetValue<bool>() ?? false,
+            WithVersion = withVersion
         }, ct);
         return IpcJson.ToNode(new
         {
@@ -187,10 +211,11 @@ public sealed class Operations
     private JsonNode? DocumentOp(IpcRequest r, JsonObject a, CancellationToken ct)
     {
         string document = Str(a, "document");
+        bool withVersion = a["withVersion"]?.GetValue<bool>() ?? false;
         if (a["id"]?.GetValue<string>() is { Length: > 0 } id)
-            return IpcJson.ToNode(new { row = _documents.ById(Base(r), document, id, ct) });
+            return IpcJson.ToNode(new { row = _documents.ById(Base(r), document, id, ct, withVersion) });
         if (a["ids"] is JsonArray ids)
-            return IpcJson.ToNode(new { rows = _documents.ByIds(Base(r), document, ids.Select(n => n!.GetValue<string>()).ToList(), ct) });
+            return IpcJson.ToNode(new { rows = _documents.ByIds(Base(r), document, ids.Select(n => n!.GetValue<string>()).ToList(), ct, withVersion) });
 
         var page = _documents.List(Base(r), new DocumentQuery
         {
@@ -205,7 +230,8 @@ public sealed class Operations
             Tabular = a["tabular"]?.GetValue<bool>() ?? true,
             From = OptDate(a, "from"),
             To = OptDate(a, "to"),
-            SkipTotal = a["skipTotal"]?.GetValue<bool>() ?? false
+            SkipTotal = a["skipTotal"]?.GetValue<bool>() ?? false,
+            WithVersion = withVersion
         }, ct);
         return IpcJson.ToNode(new
         {
@@ -235,16 +261,34 @@ public sealed class Operations
         return IpcJson.ToNode(new { slices = slices.Select(s => new { from = s.From, to = s.To, rows = s.Rows }) });
     }
 
+    /// <summary>Sync: <c>ids</c> → the versions of those that exist; otherwise a keyset page after <c>after</c>.</summary>
+    private JsonNode? VersionsOp(IpcRequest r, JsonObject a, CancellationToken ct)
+    {
+        string table = Str(a, "table");
+        if (a["ids"] is JsonArray ids)
+            return IpcJson.ToNode(new { rows = _versions.ByIds(Base(r), table, ids.Select(n => n!.GetValue<string>()).ToList(), ct) });
+        var page = _versions.Page(Base(r), table, a["after"]?.GetValue<string>(), a["limit"]?.GetValue<int>() ?? 5000, ct);
+        return IpcJson.ToNode(new { rows = page.Rows, next = page.Next, sessionId = page.SessionId });
+    }
+
+    private JsonNode? ChartOp(IpcRequest r, JsonObject a, CancellationToken ct)
+    {
+        var page = _charts.List(Base(r), Str(a, "chart"), a["limit"]?.GetValue<int>() ?? 1000, a["offset"]?.GetValue<int>() ?? 0, ct);
+        return IpcJson.ToNode(new { rows = page.Rows, totalCount = page.TotalCount, hasMore = page.HasMore, sessionId = page.SessionId });
+    }
+
     /// <summary>Register rows in the old adapter's shape (D34); kind = information | accumulation | accounting.</summary>
+    private static RegisterKind Kind(string kind) => kind switch
+    {
+        "information" or "info" => RegisterKind.Information,
+        "accumulation" => RegisterKind.Accumulation,
+        "accounting" => RegisterKind.Accounting,
+        var other => throw new ArgumentException($"kind must be information|accumulation|accounting, got '{other}'")
+    };
+
     private JsonNode? RegisterOp(IpcRequest r, JsonObject a, CancellationToken ct)
     {
-        var kind = Str(a, "kind") switch
-        {
-            "information" or "info" => RegisterKind.Information,
-            "accumulation" => RegisterKind.Accumulation,
-            "accounting" => RegisterKind.Accounting,
-            var other => throw new ArgumentException($"kind must be information|accumulation|accounting, got '{other}'")
-        };
+        var kind = Kind(Str(a, "kind"));
         var page = _registers.List(Base(r), new RegisterQuery
         {
             Kind = kind,
@@ -255,12 +299,16 @@ public sealed class Operations
             Order = a["order"]?.GetValue<string>() ?? "desc",
             To = OptDate(a, "to"),
             SkipTotal = a["skipTotal"]?.GetValue<bool>() ?? false,
-            Recorder = a["recorderId"]?.GetValue<string>() is { Length: > 0 } rid ? (Str(a, "recorderDocument"), rid) : null
+            Recorder = a["recorderId"]?.GetValue<string>() is { Length: > 0 } rid ? (Str(a, "recorderDocument"), rid) : null,
+            SyncKeys = a["syncKeys"]?.GetValue<bool>() ?? false,
+            AfterLine = a["afterLine"]?.GetValue<int>(),
+            AfterKey = a["afterKey"]?.GetValue<string>()
         }, ct);
         return IpcJson.ToNode(new
         {
             rows = page.Rows, totalCount = page.TotalCount, nextCursorDate = page.NextCursorDate,
-            nextCursorSkip = page.NextCursorSkip, hasMore = page.HasMore, sessionId = page.SessionId
+            nextCursorSkip = page.NextCursorSkip, hasMore = page.HasMore, sessionId = page.SessionId,
+            nextLine = page.NextLine, nextKey = page.NextKey
         });
     }
 
@@ -414,7 +462,12 @@ public sealed class Operations
             SessionFatal = oe.IsSessionFatal,
             HostFatal = oe.IsHostFatal,
             Category = oe.Category,
-            Kind = kind
+            Kind = kind,
+            NotFoundScope = kind == ErrorKinds.NotFound ? (ObjectNotFound.IsMatch(oe.Message) ? "object" : "metadata") : null
         };
     }
+
+    /// <summary>The by-id reads' wording: "Справочник.X &lt;guid&gt; not found" / "Документ.X &lt;guid&gt; not found".</summary>
+    private static readonly System.Text.RegularExpressions.Regex ObjectNotFound =
+        new(@"^(Справочник|Документ|ПланСчетов)\.\S+ [0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12} not found$");
 }

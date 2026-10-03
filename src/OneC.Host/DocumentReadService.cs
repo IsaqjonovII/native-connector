@@ -38,6 +38,9 @@ public sealed record DocumentQuery
     public DateTime? To { get; init; }
 
     public bool SkipTotal { get; init; }
+
+    /// <summary>Sync: each row also carries <c>dataVersion</c> (ВерсияДанных from the same query).</summary>
+    public bool WithVersion { get; init; }
 }
 
 public sealed record DocumentPage(
@@ -73,10 +76,10 @@ public sealed class DocumentReadService
     }
 
     /// <summary>One document in the by-id shape; not found is an error (404 at the edge).</summary>
-    public Dictionary<string, object?> ById(string baseName, string document, string id, CancellationToken ct = default)
+    public Dictionary<string, object?> ById(string baseName, string document, string id, CancellationToken ct = default, bool withVersion = false)
     {
         if (!Guid.TryParse(id, out _)) throw new ArgumentException($"'{id}' is not a GUID", nameof(id));
-        var rows = ByIds(baseName, document, new[] { id }, ct);
+        var rows = ByIds(baseName, document, new[] { id }, ct, withVersion);
         return rows.Count > 0 ? rows[0]
             : throw OneCException.Host($"Документ.{document} {id} not found", ErrorContext.None, "document", document);
     }
@@ -85,7 +88,8 @@ public sealed class DocumentReadService
     /// Several documents in the by-id shape, in request order; unknown ids are simply absent and
     /// malformed ones skipped (the old batch route, main.os:8317). 1 + T queries per 200 ids.
     /// </summary>
-    public List<Dictionary<string, object?>> ByIds(string baseName, string document, IReadOnlyList<string> ids, CancellationToken ct = default)
+    public List<Dictionary<string, object?>> ByIds(string baseName, string document, IReadOnlyList<string> ids, CancellationToken ct = default,
+                                                   bool withVersion = false)
     {
         ValidateName(document);
         var wanted = ids.Select(i => Guid.TryParse(i?.Trim(), out var g) ? g.ToString("D") : null).OfType<string>().ToList();
@@ -111,7 +115,7 @@ public sealed class DocumentReadService
                 var query = QueryKit.NewQuery(ctx, scope, BuildSelect(schema, attrs, null, "Ссылка В (&refs)", null));
                 QueryKit.SetParameter(ctx, query, "refs", refs);
                 using var batch = new RefBatch(ctx);
-                var rows = ReadRows(ctx, scope, query, schema, attrs, batch, ct);
+                var rows = ReadRows(ctx, scope, query, schema, attrs, batch, ct, withVersion);
                 var byId = rows.ToDictionary(r => (string)r["id"]!, StringComparer.Ordinal);
                 TabularSections.Load(ctx, "Документ." + name, schema.Tabular, refs, byId, includeEmpty: true, ct, batch);
                 batch.Patch(rows);
@@ -185,7 +189,7 @@ public sealed class DocumentReadService
         {
             var render = QueryKit.NewQuery(ctx, scope, BuildSelect(schema, attrs, null, "Ссылка В (&refs)", null));
             QueryKit.SetParameter(ctx, render, "refs", refs);
-            foreach (var row in ReadRows(ctx, scope, render, schema, attrs, batch, ct)) rendered[(string)row["id"]!] = row;
+            foreach (var row in ReadRows(ctx, scope, render, schema, attrs, batch, ct, q.WithVersion)) rendered[(string)row["id"]!] = row;
             // The contract filters below read rendered values; resolve before filtering.
             batch.Patch(rendered.Values);
         }
@@ -234,7 +238,8 @@ public sealed class DocumentReadService
 
     /// <summary>Every row of <paramref name="query"/>, rendered in the old shape (no tabular sections).</summary>
     private static List<Dictionary<string, object?>> ReadRows(
-        SessionContext ctx, ComScope scope, object query, DocumentSchema schema, List<AttributeShape> attrs, RefBatch batch, CancellationToken ct)
+        SessionContext ctx, ComScope scope, object query, DocumentSchema schema, List<AttributeShape> attrs, RefBatch batch, CancellationToken ct,
+        bool withVersion = false)
     {
         var cursor = QueryKit.Execute(ctx, scope, query);
         int orgIndex = schema.OrgAttribute is null ? -1 : attrs.FindIndex(a => a.Name == schema.OrgAttribute);
@@ -253,6 +258,7 @@ public sealed class DocumentReadService
                 row[attrs[i].Name] = LegacyValue.Read(cursor, "a" + i, attrs[i], ctx, batch);
             if (orgIndex >= 0 && QueryKit.OrgGuid(cursor, "a" + orgIndex, ctx) is { } org)
                 row["orgRef"] = org;
+            if (withVersion) row["dataVersion"] = cursor.Get("dv", ctx.Error) as string;
             rows.Add(row);
         }
         return rows;
@@ -266,6 +272,8 @@ public sealed class DocumentReadService
         var cols = new List<string> { $"{F("Ссылка")} КАК id", $"{F("Дата")} КАК d", $"{F("Проведен")} КАК pst", $"{F("ПометкаУдаления")} КАК dm" };
         if (s.HasNumber) cols.Add($"{F("Номер")} КАК num");
         for (int i = 0; i < attrs.Count; i++) cols.Add(LegacyValue.Select(F(attrs[i].Name), "a" + i, attrs[i]));
+        // Sync (S3): the version from the same query as the row, surfaced only with WithVersion.
+        cols.Add($"{F("ВерсияДанных")} КАК dv");
 
         string sql = "ВЫБРАТЬ " + (first is { } n ? $"ПЕРВЫЕ {n} " : "") + string.Join(", ", cols) + $" ИЗ Документ.{s.Name} КАК {QueryKit.Alias}";
         if (where is not null) sql += " ГДЕ " + where;

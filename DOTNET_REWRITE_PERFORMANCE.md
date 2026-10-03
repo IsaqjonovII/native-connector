@@ -616,6 +616,8 @@ Per-write memory was not measured separately; the sweep host stayed at ~400–50
 
 ## Milestone 5.9 — sync into the local stub (2026-09-25)
 
+The 5.9 engine and its `sync` mode were removed on 2026-10-02 (D48); numbers kept as history.
+
 | run (KAN, local copy) | result |
 |---|---|
 | `sync` mode, cold read: Банки 500 + ПТУ since 01.09 (19, all tabular sections) + Хозрасчетный since 01.09 (27) | pass 33 s incl. first connect and schema loads; 3 uploads, 365 KB |
@@ -623,6 +625,44 @@ Per-write memory was not measured separately; the sweep host stayed at ~400–50
 
 The connector's per-cycle costs that disappear with the feed: `/counts` per table per base, a
 full read of `Catalog_Контрагенты`/`Банки` every cycle, and budgeted edit sweeps.
+
+## Sync — S0 / S1 (2026-09-30)
+
+| measurement | result |
+|---|---|
+| Event log, KAN September file (2.7 GB, 5.9 M records), full read by the spike tool | 23 s |
+| Version scan (`Ссылка, ВерсияДанных`, keyset 5 000), KAN РеализацияТоваровУслуг 89 988 docs | 9.6 s = 9 415 rows/s, host +11 MB private |
+| Version scan, KAN Номенклатура 37 527 | 1.7 s = 21 997 rows/s |
+| `sync.db` small commit (cursor + item, WAL, synchronous=FULL) | p50 5.2 ms, p95 10.2 ms, max 18 ms |
+| 10 000 work items, 20 transactions | 0.2 s |
+| 1 M `object_versions` (random GUIDs, 5 000 per transaction) | 128 s = 7 800/s, 159 MB on disk (167 B/object); 2 MB default cache: 5 600/s |
+| verify page (5 000 lookups + stamps) against 1 M stored | 58 ms |
+
+### Sync — final local numbers (S4–S15, consolidated 2026-10-01)
+
+Measured on this machine (local KAN server base, bilim file base, stub or the isolated local
+backend/1c). No shared-dev number yet (S12 dev is blocked on the developer's dev login).
+
+| measurement | result | raw |
+|---|---|---|
+| Idle scheduler, 23 real bases, 10 min | **0.009 % CPU**, 8–11 MB private, 0 sync sessions | `s4-idlebench.txt` |
+| Sync engine private memory (kill test, engine alone in a child process) | **41–49 MB** peak across four 50-kill runs | `s15-chaos-*.txt` |
+| Supervisor private during snapshots | catalog 116 759 rows ≤ 145 MB; accounting K=1 177 MB, K=4 166 MB; into the local backend 118 MB | `s5-kan-accounting.txt`, `s12-local-backend.txt` |
+| Host (1C) memory during the accounting snapshot | **K=1 195 MB private / 268 MB ws; K=4 497 MB private / 561 MB ws** | `s5-kan-accounting.txt` |
+| Catalog snapshot, KAN ДоговорыКонтрагентов 116 759 rows, stub | ~2 200 rows/s (= plain pipe reading; in-process walk 3 163, the gap is the IPC hop, D43) | `MIGRATION_STATUS` S5 |
+| Accounting snapshot, KAN Хозрасчетный 12 months, 249 148 rows / 381 MB | **K=1 227 rows/s → K=4 1 301 rows/s (5.7×)** | `s5-kan-accounting.txt` |
+| Same, window from 2026-04-01 (66 552 rows) | raw host walk 476 rows/s, pipeline 619 rows/s (no pipeline overhead) | S5 |
+| Feed replay, KAN September log 2.7 GB | 59 s (45 MB/s), 440 575 data events → 1 473 work items, 98 MB private | `s6-feedbench.txt` |
+| Verify pass, KAN РеализацияТоваровУслуг 89 988 documents | 6.3 s (14 300 objects/s), 0 changed / 0 gone | S11 |
+| Independent information register refresh, nothing changed | bilim 68 rows 0.1 s; KAN 4 387–4 749 rows 0.4 s; 23 521 rows 5.0 s; МИКО 1 467 891 rows (not synced) 223 s | `s9-refresh.txt` |
+| Upload into the isolated local backend/1c (v2 multipart) | 2026-09-30: 116 759 rows / 272.6 MB in 71.8 s = 1 625 rows/s, supervisor 118 MB. **2026-10-01 after the upload-buffer fix (no growth copies, no `ToArray`): 57.1 s = 2 044 rows/s, supervisor 115 MB, byte budget peak 2.3 MB** — stored rows counted in the isolated Mongo: 116 759, distinct keys 116 759 (the 2026-09-30 "read back" was backend/1c's `/counts`, not a read-back). Part of the speed-up may be a warm KAN cache; the fix's certain effect is fewer copies of each ≤ 8 MB body | `s12-local-backend.txt`, `s12-local-backend-2026-10-02.txt` |
+| Kill test convergence after the last kill (50 kills, ~3 500 changes, backend = 1C exactly) | 195 s and 266 s → **9 s** after the leftover-lease fix (items of a killed engine were locked for the 5-min lease) | `s15-chaos-final-4*.txt` |
+| "Add table" metadata list (names + synonyms, one COM walk) | bilim 1 656 tables 3.0 s, kansler 706 tables 2.3–2.6 s; details for 42 tables 0.35–0.42 s; host-cached after (0.5 s) | `TableCatalogLiveTests` |
+
+The 301 s / "FAIL: 2 differences" run in `s15-chaos-50.txt` is the first run, before the two fixes
+it found (MIGRATION_STATUS S15) — kept as the record of the bugs, not a result.
+
+Raw: `measurements/sync-s0/`.
 
 ---
 

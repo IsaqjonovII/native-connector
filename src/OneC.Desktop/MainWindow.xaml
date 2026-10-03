@@ -5,30 +5,108 @@
 
     <Grid x:Name="RootGrid" Background="{ThemeResource WindowBackgroundBrush}">
         <Grid.RowDefinitions>
-            <RowDefinition Height="40" />
+            <RowDefinition Height="48" />
             <RowDefinition Height="*" />
             <RowDefinition Height="28" />
         </Grid.RowDefinitions>
+        <Grid.KeyboardAccelerators>
+            <!-- Hidden developer switch between AIBA clouds, as in the old Connector. -->
+            <KeyboardAccelerator Key="D" Modifiers="Control,Shift" Invoked="EnvSwitch_Invoked" />
+        </Grid.KeyboardAccelerators>
 
-        <Grid x:Name="AppTitleBar" Grid.Row="0" Padding="14,0,0,0">
-            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                <Border Width="18" Height="18" CornerRadius="4" Background="{ThemeResource AccentFillColorDefaultBrush}">
-                    <TextBlock Text="A" FontSize="11" FontWeight="Bold"
-                               Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
-                               HorizontalAlignment="Center" VerticalAlignment="Center" />
-                </Border>
-                <TextBlock Text="AIBA Connector" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"
-                           Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-                <TextBlock Text="1C bridge · preview" FontSize="12" VerticalAlignment="Center"
-                           Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-            </StackPanel>
+        <!-- Header: drag area on the left (the only part handed to SetTitleBar), then the
+             company picker, the theme switcher and the account button, then room for the
+             caption buttons. -->
+        <Grid Grid.Row="0" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition x:Name="CaptionColumn" Width="138" />
+            </Grid.ColumnDefinitions>
+            <Grid x:Name="AppTitleBar" Padding="14,0,0,0" Background="Transparent">
+                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                    <Border Width="18" Height="18" CornerRadius="4" Background="{ThemeResource AccentFillColorDefaultBrush}">
+                        <TextBlock Text="A" FontSize="11" FontWeight="Bold"
+                                   Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <TextBlock Text="AIBA Connector" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"
+                               Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                    <Border x:Name="EnvBadge" Visibility="Collapsed" CornerRadius="4" Padding="6,1,6,1" VerticalAlignment="Center"
+                            Background="{ThemeResource WarnBrush}">
+                        <TextBlock x:Name="EnvBadgeText" FontSize="11" FontWeight="SemiBold" Foreground="White" />
+                    </Border>
+                </StackPanel>
+            </Grid>
+            <!-- Company picker: a button that opens a searchable list (name or INN). A plain
+                 ComboBox had no search, useless for accountants with dozens of companies. -->
+            <Button x:Name="CompanyButton" Grid.Column="1" Width="300" VerticalAlignment="Center" Visibility="Collapsed"
+                    HorizontalContentAlignment="Stretch" Padding="11,5,8,6" Click="CompanyButton_Click">
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="CompanyButtonText" Text="Choose a company" TextTrimming="CharacterEllipsis"
+                               VerticalAlignment="Center" />
+                    <FontIcon Grid.Column="1" Glyph="&#xE70D;" FontSize="12" VerticalAlignment="Center"
+                              Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </Grid>
+                <FlyoutBase.AttachedFlyout>
+                    <Flyout x:Name="CompanyFlyout" Placement="BottomEdgeAlignedRight" Opened="CompanyFlyout_Opened">
+                        <Grid Width="400" RowSpacing="8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBox x:Name="CompanySearch" PlaceholderText="Search by name or INN"
+                                     TextChanged="CompanySearch_TextChanged" KeyDown="CompanySearch_KeyDown" />
+                            <ListView x:Name="CompanyList" Grid.Row="1" MaxHeight="420" SelectionMode="Single"
+                                      IsItemClickEnabled="True" ItemClick="CompanyList_ItemClick" KeyDown="CompanyList_KeyDown">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Padding="0,6,0,6">
+                                            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding Inn}" FontSize="12"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                            <TextBlock x:Name="CompanyNone" Grid.Row="1" Visibility="Collapsed" Margin="4,8,4,8"
+                                       Text="No company matches." Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </Grid>
+                    </Flyout>
+                </FlyoutBase.AttachedFlyout>
+            </Button>
+            <!-- Light / Dark / same as Windows. The icon shows the current choice. -->
+            <Button x:Name="ThemeButton" Grid.Column="2" VerticalAlignment="Center" Click="ThemeButton_Click"
+                    Background="Transparent" BorderThickness="0" Width="36" Height="32" Padding="0"
+                    AutomationProperties.Name="Theme">
+                <FontIcon x:Name="ThemeIcon" Glyph="&#xE770;" FontSize="15"
+                          Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+            </Button>
+            <Button x:Name="AccountButton" Grid.Column="3" VerticalAlignment="Center" Click="AccountButton_Click"
+                    Background="Transparent" BorderThickness="0" Padding="8,4,8,4">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Border Width="26" Height="26" CornerRadius="13" Background="{ThemeResource AccentFillColorDefaultBrush}">
+                        <TextBlock x:Name="AccountInitials" Text="?" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <TextBlock x:Name="AccountText" Text="Sign in" VerticalAlignment="Center" FontSize="13"
+                               Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                </StackPanel>
+            </Button>
         </Grid>
 
         <NavigationView
             x:Name="Nav"
             Grid.Row="1"
             IsBackButtonVisible="Collapsed"
-            IsSettingsVisible="False"
+            IsSettingsVisible="True"
             PaneDisplayMode="Left"
             OpenPaneLength="200"
             CompactModeThresholdWidth="900"
@@ -38,8 +116,8 @@
                 <NavigationViewItem Content="Infobases" Tag="bases">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE8F1;" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Content="Browse data" Tag="browse">
-                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE8A1;" /></NavigationViewItem.Icon>
+                <NavigationViewItem Content="1C connections" Tag="connections">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE703;" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem Content="Activity" Tag="activity">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE81C;" /></NavigationViewItem.Icon>

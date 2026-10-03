@@ -30,6 +30,9 @@ public sealed record CatalogQuery
 
     /// <summary>Skip the count (a full scan). Filtered reads skip it anyway.</summary>
     public bool SkipTotal { get; init; }
+
+    /// <summary>Sync: each row also carries <c>dataVersion</c> (ВерсияДанных from the same query).</summary>
+    public bool WithVersion { get; init; }
 }
 
 public sealed record CatalogPage(
@@ -68,27 +71,28 @@ public sealed class CatalogReadService
     /// One element with every attribute. Unlike the old by-id route it carries tabular
     /// sections too, so it is the same row the list returns (D33).
     /// </summary>
-    public Dictionary<string, object?> ById(string baseName, string catalog, string id, CancellationToken ct = default)
+    public Dictionary<string, object?> ById(string baseName, string catalog, string id, CancellationToken ct = default, bool withVersion = false)
     {
         ReadService.ValidateIdentifier(catalog, "catalog");
         if (catalog.Contains('.')) throw new ArgumentException($"catalog '{catalog}' must be a bare name", nameof(catalog));
         if (!Guid.TryParse(id, out _)) throw new ArgumentException($"'{id}' is not a GUID", nameof(id));
 
         return QueryKit.Healing(baseName, () => _sessions.Use(baseName, ctx =>
-            ReadOne(ctx, catalog, id, withTabular: true, ct)
+            ReadOne(ctx, catalog, id, withTabular: true, ct, withVersion)
             ?? throw OneCException.Host($"Справочник.{catalog} {id} not found", ctx.Error, "catalog", catalog), ct));
     }
 
     /// <summary>One element on the caller's session, or null. <paramref name="withTabular"/>
     /// false gives the old by-id row (no sections), which registers embed.</summary>
-    internal static Dictionary<string, object?>? ReadOne(SessionContext ctx, string catalog, string id, bool withTabular, CancellationToken ct)
+    internal static Dictionary<string, object?>? ReadOne(SessionContext ctx, string catalog, string id, bool withTabular, CancellationToken ct,
+                                                        bool withVersion = false)
     {
         var schema = CatalogSchemas.Get(ctx, catalog);
         var attrs = schema.Attributes.ToList();
         using var scope = new ComScope();
         var query = QueryKit.NewQuery(ctx, scope, BuildSelect(schema, attrs, first: null, where: "Ссылка = &id", orderBy: null));
         QueryKit.SetParameter(ctx, query, "id", QueryKit.RefByGuid(ctx, scope, "Справочники", catalog, id));
-        var rows = ReadRows(ctx, scope, query, schema, attrs, withTabular, skip: 0, take: 1, ct);
+        var rows = ReadRows(ctx, scope, query, schema, attrs, withTabular, skip: 0, take: 1, ct, withVersion);
         return rows.Count == 1 ? rows[0] : null;
     }
 
@@ -121,7 +125,7 @@ public sealed class CatalogReadService
         if (keyset) QueryKit.SetParameter(ctx, query, "after", QueryKit.RefByGuid(ctx, scope, "Справочники", q.Catalog, q.After!));
 
         var rows = ReadRows(ctx, scope, query, schema, attrs, withTabular: q.Fields is null,
-                            skip: keyset ? 0 : q.Offset, take: q.Limit, ct);
+                            skip: keyset ? 0 : q.Offset, take: q.Limit, ct, q.WithVersion);
         string? next = keyset && rows.Count == q.Limit ? (string?)rows[^1]["id"] : null;
         return new CatalogPage(rows, total, next, ignored, ctx.SessionId, 0);
     }
@@ -130,7 +134,7 @@ public sealed class CatalogReadService
 
     private static List<Dictionary<string, object?>> ReadRows(
         SessionContext ctx, ComScope scope, object query, CatalogSchema schema, List<AttributeShape> attrs,
-        bool withTabular, int skip, int take, CancellationToken ct)
+        bool withTabular, int skip, int take, CancellationToken ct, bool withVersion = false)
     {
         var cursor = QueryKit.Execute(ctx, scope, query);
         withTabular &= schema.Tabular.Count > 0;
@@ -163,6 +167,7 @@ public sealed class CatalogReadService
                 row[attrs[i].Name] = LegacyValue.Read(cursor, "a" + i, attrs[i], ctx, batch);
             if (orgIndex >= 0 && QueryKit.OrgGuid(cursor, "a" + orgIndex, ctx) is { } org)
                 row["orgRef"] = org;
+            if (withVersion) row["dataVersion"] = cursor.Get("dv", ctx.Error) as string;
 
             if (pageRefs is not null) QueryKit.Add(ctx, pageRefs, idRef);
             rows.Add(row);
@@ -189,6 +194,9 @@ public sealed class CatalogReadService
         // (main.os:6130).
         if (s.HasOwner) cols.Add($"ПРЕДСТАВЛЕНИЕ({F("Владелец")}) КАК o");
         for (int i = 0; i < attrs.Count; i++) cols.Add(LegacyValue.Select(F(attrs[i].Name), "a" + i, attrs[i]));
+        // Sync (S3): the object's version from the same query as its row, surfaced only with
+        // WithVersion — a separate later read could store a version newer than the row sent.
+        cols.Add($"{F("ВерсияДанных")} КАК dv");
 
         string sql = "ВЫБРАТЬ " + (first is { } n ? $"ПЕРВЫЕ {n} " : "") + string.Join(", ", cols) + $" ИЗ Справочник.{s.Name} КАК {QueryKit.Alias}";
         if (where is not null) sql += " ГДЕ " + where;

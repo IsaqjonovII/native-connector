@@ -25,18 +25,18 @@
                  fits one line from a ~1 300 px window and wraps cleanly below that. -->
             <ComboBox x:Name="BaseBox" Header="Infobase" Width="168" Margin="0,0,12,0"
                       VariableSizedWrapGrid.ColumnSpan="18" />
-            <AutoSuggestBox x:Name="EntityBox" Header="Table" Width="288" Margin="0,0,12,0"
+            <AutoSuggestBox x:Name="EntityBox" Header="What to read" Width="288" Margin="0,0,12,0"
                             PlaceholderText="Справочник.Номенклатура"
                             TextChanged="Entity_TextChanged" SuggestionChosen="Entity_SuggestionChosen"
                             VariableSizedWrapGrid.ColumnSpan="30" />
-            <TextBox x:Name="FieldsBox" Header="Columns (comma separated)" Width="298" Margin="0,0,12,0"
+            <TextBox x:Name="FieldsBox" Header="Columns" Width="298" Margin="0,0,12,0"
                      PlaceholderText="Наименование, Код" VariableSizedWrapGrid.ColumnSpan="31" />
             <NumberBox x:Name="LimitBox" Header="Rows" Width="98" Margin="0,0,12,0" Minimum="1" Maximum="100000"
                        Value="100" SpinButtonPlacementMode="Compact" VariableSizedWrapGrid.ColumnSpan="11" />
-            <ComboBox x:Name="RefsBox" Header="Links shown as" Width="148" Margin="0,0,12,0" SelectedIndex="0"
+            <ComboBox x:Name="RefsBox" Header="Show references as" Width="148" Margin="0,0,12,0" SelectedIndex="0"
                       VariableSizedWrapGrid.ColumnSpan="16">
                 <x:String>Names</x:String>
-                <x:String>IDs (GUID)</x:String>
+                <x:String>IDs</x:String>
                 <x:String>Names and IDs</x:String>
             </ComboBox>
         </VariableSizedWrapGrid>

@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+  <!-- S4 live check: the sync scheduler over every 1C base this PC's launcher lists, real log
+       files, no-op agents. Measures what idle bases cost. Opens no 1C session. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\OneC.Sync\OneC.Sync.csproj" />
+    <ProjectReference Include="..\..\..\src\OneC.Desktop.Core\OneC.Desktop.Core.csproj" />
+  </ItemGroup>
+</Project>

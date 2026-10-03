@@ -29,6 +29,22 @@ public sealed record RegisterQuery
     /// The sync re-reads a reposted document's rows this way (5.9); cursor and window do not apply.
     /// </summary>
     public (string Document, string Id)? Recorder { get; init; }
+
+    /// <summary>
+    /// Sync (S3): every recorded register row carries <c>recorderRef</c>, <c>lineNo</c> and
+    /// every row with an organisation <c>orgRef</c>, as accounting rows always did — the keys and
+    /// routing §7/§21 need. Off by default so the old adapter's rows stay byte-identical (D33).
+    /// </summary>
+    public bool SyncKeys { get; init; }
+
+    /// <summary>By-recorder paging (with <see cref="Recorder"/>): lines after this НомерСтроки.</summary>
+    public int? AfterLine { get; init; }
+
+    /// <summary>
+    /// Independent information registers (with <see cref="SyncKeys"/>): the opaque key the
+    /// previous page returned as <see cref="RegisterPage.NextKey"/>; rows come in natural-key order.
+    /// </summary>
+    public string? AfterKey { get; init; }
 }
 
 public sealed record RegisterPage(
@@ -38,7 +54,13 @@ public sealed record RegisterPage(
     int NextCursorSkip,
     bool HasMore,
     string Register,
-    int SessionId);
+    int SessionId)
+{
+    /// <summary>By-recorder paging: the last line read, for <see cref="RegisterQuery.AfterLine"/>.</summary>
+    public int? NextLine { get; init; }
+    /// <summary>Independent information register paging: pass back as <see cref="RegisterQuery.AfterKey"/>.</summary>
+    public string? NextKey { get; init; }
+}
 
 /// <summary>
 /// Register reads with the old adapter's rows (main.os:17911 / :18078 / :18286): every column of
@@ -69,6 +91,7 @@ public sealed class RegisterReadService
             : -1;
         if (q.Limit <= 0) return new RegisterPage(new(), total, null, 0, false, q.Register, ctx.SessionId);
         if (q.Recorder is { } rec) return ByRecorder(ctx, scope, s, q, rec, total, ct);
+        if (q.SyncKeys && s.Independent) return RegisterKeyset.Page(ctx, scope, s, q, total, ct);
 
         bool asc = q.Order.Trim().Equals("asc", StringComparison.OrdinalIgnoreCase);
         string dir = asc ? "ВОЗР" : "УБЫВ";
@@ -116,7 +139,7 @@ public sealed class RegisterReadService
         // Only parameters the final text uses (the window replaces the cursor in the VT form).
         foreach (var (name, value) in parameters.DistinctBy(p => p.Name).Where(p => sql.Contains("&" + p.Name, StringComparison.Ordinal)))
             QueryKit.SetParameter(ctx, query, name, value);
-        var rows = ReadRows(ctx, scope, query, s, skip, q.Limit, ct, out var lastPeriod, out int onLast);
+        var rows = ReadRows(ctx, scope, query, s, skip, q.Limit, q.SyncKeys, ct, out var lastPeriod, out int onLast);
 
         string? nextDate = null;
         int nextSkip = 0;
@@ -139,14 +162,22 @@ public sealed class RegisterReadService
         ReadService.ValidateIdentifier(rec.Document, "recorder document");
         if (!Guid.TryParse(rec.Id, out _)) throw new ArgumentException($"recorder id '{rec.Id}' is not a GUID");
         var recorder = QueryKit.RefByGuid(ctx, scope, "Документы", rec.Document, rec.Id);
-        string order = s.Periodic ? "Период, НомерСтроки" : "НомерСтроки";
+        // Paged (sync, R-8): НомерСтроки is unique within a recorder, so it alone orders and
+        // keys the pages. The unpaged order stays the old one.
+        bool paged = q.SyncKeys || q.AfterLine is not null;
+        string order = paged ? "НомерСтроки" : s.Periodic ? "Период, НомерСтроки" : "НомерСтроки";
+        string filter = "Регистратор = &recorder" + (q.AfterLine is not null ? " И НомерСтроки > &afterLine" : "");
         string sql = s.Subconto
-            ? Select(s, q.Limit, $"{s.Source}(, , Регистратор = &recorder)", null, order)
-            : Select(s, q.Limit, s.Source, $"{QueryKit.Field("Регистратор")} = &recorder", order);
+            ? Select(s, q.Limit, $"{s.Source}(, , {filter})", null, order)
+            : Select(s, q.Limit, s.Source, $"{QueryKit.Field("Регистратор")} = &recorder" +
+                                           (q.AfterLine is not null ? $" И {QueryKit.Field("НомерСтроки")} > &afterLine" : ""), order);
         var query = QueryKit.NewQuery(ctx, scope, sql);
         QueryKit.SetParameter(ctx, query, "recorder", recorder);
-        var rows = ReadRows(ctx, scope, query, s, 0, q.Limit, ct, out _, out _);
-        return new RegisterPage(rows, total, null, 0, rows.Count >= q.Limit, q.Register, ctx.SessionId);
+        if (q.AfterLine is { } after) QueryKit.SetParameter(ctx, query, "afterLine", after);
+        var rows = ReadRows(ctx, scope, query, s, 0, q.Limit, q.SyncKeys, ct, out _, out _);
+        int? nextLine = paged && rows.Count > 0 && rows[^1].TryGetValue("НомерСтроки", out var ln) && ln is not null
+            ? Convert.ToInt32(ln, System.Globalization.CultureInfo.InvariantCulture) : null;
+        return new RegisterPage(rows, total, null, 0, rows.Count >= q.Limit, q.Register, ctx.SessionId) { NextLine = nextLine };
     }
 
     /// <summary>
@@ -187,13 +218,16 @@ public sealed class RegisterReadService
         return (start, edge, inner);
     }
 
-    private static List<Dictionary<string, object?>> ReadRows(
-        SessionContext ctx, ComScope scope, object query, RegisterSchema s, int skip, int take, CancellationToken ct,
-        out DateTime? lastPeriod, out int onLast)
+    /// <param name="syncKeys">Add recorderRef / lineNo / orgRef to every register's rows, not only accounting (§7, §21).</param>
+    /// <param name="onRow">Called with the cursor still on each row, after the row is built (keyset capture).</param>
+    internal static List<Dictionary<string, object?>> ReadRows(
+        SessionContext ctx, ComScope scope, object query, RegisterSchema s, int skip, int take, bool syncKeys, CancellationToken ct,
+        out DateTime? lastPeriod, out int onLast, Action<DispatchMemo, int>? onRow = null)
     {
         var cursor = QueryKit.Execute(ctx, scope, query);
         var cols = s.Columns;
         bool accounting = s.Kind == RegisterKind.Accounting;
+        bool extras = accounting || syncKeys;
         bool people = s.Kind == RegisterKind.Information && s.Name == "ДокументыФизическихЛиц";
         int periodIndex = cols.ToList().FindIndex(c => c.Name == "Период");
         var peopleCache = people ? new Dictionary<string, object?>(StringComparer.Ordinal) : null;
@@ -213,10 +247,10 @@ public sealed class RegisterReadService
                 string name = cols[i].Name, alias = "c" + i;
                 if (peopleCache is not null && name == "Физлицо") { row[name] = Person(ctx, cursor, alias, peopleCache, ct); continue; }
                 row[name] = LegacyValue.Read(cursor, alias, cols[i], ctx, batch);
-                if (!accounting) continue;
+                if (!extras) continue;
                 switch (name)
                 {
-                    case "СчетДт" or "СчетКт":
+                    case "СчетДт" or "СчетКт" when accounting:
                         if (cursor.Get(alias + "k", ctx.Error) is { } code and not DBNull && LegacyValue.Filled(code)) row[name + "Код"] = code;
                         break;
                     case "Регистратор":
@@ -236,6 +270,7 @@ public sealed class RegisterReadService
                 else { lastPeriod = period; onLast = 1; }
             }
             rows.Add(row);
+            onRow?.Invoke(cursor, rows.Count);
         }
         batch.Patch(rows);
         return rows;

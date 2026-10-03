@@ -17,11 +17,11 @@
         <StackPanel Grid.Row="0">
             <TextBlock Text="Resources" Style="{StaticResource PageTitleStyle}" />
             <TextBlock Style="{StaticResource PageSubtitleStyle}"
-                       Text="Memory and connections used by the 1C engine on this computer. Updates every 2 seconds." />
+                       Text="How much of this computer the connector uses right now. Updates every 2 seconds." />
         </StackPanel>
 
         <!-- Totals: wrap on narrow windows. -->
-        <VariableSizedWrapGrid Grid.Row="1" Orientation="Horizontal" ItemWidth="190" ItemHeight="76">
+        <VariableSizedWrapGrid Grid.Row="1" Orientation="Horizontal" ItemWidth="210" ItemHeight="96">
             <Border Style="{StaticResource PanelStyle}" Padding="14,10,14,10" Margin="0,0,10,0">
                 <StackPanel>
                     <TextBlock x:Name="TotalRam" Text="–" Style="{StaticResource MetricValueStyle}" />
@@ -31,31 +31,31 @@
             <Border Style="{StaticResource PanelStyle}" Padding="14,10,14,10" Margin="0,0,10,0">
                 <StackPanel>
                     <TextBlock x:Name="TotalSessions" Text="–" Style="{StaticResource MetricValueStyle}" />
-                    <TextBlock Text="Open 1C sessions" Style="{StaticResource MetricLabelStyle}" />
+                    <TextBlock Text="Open connections to 1C" Style="{StaticResource MetricLabelStyle}" />
                 </StackPanel>
             </Border>
             <Border Style="{StaticResource PanelStyle}" Padding="14,10,14,10" Margin="0,0,10,0">
                 <StackPanel>
                     <TextBlock x:Name="TotalHosts" Text="–" Style="{StaticResource MetricValueStyle}" />
-                    <TextBlock Text="Engine processes" Style="{StaticResource MetricLabelStyle}" />
+                    <TextBlock Text="1C engines running" Style="{StaticResource MetricLabelStyle}" />
                 </StackPanel>
             </Border>
             <Border Style="{StaticResource PanelStyle}" Padding="14,10,14,10" Margin="0,0,10,0">
                 <StackPanel>
                     <TextBlock x:Name="TotalRestarts" Text="–" Style="{StaticResource MetricValueStyle}" />
-                    <TextBlock Text="Engine restarts" Style="{StaticResource MetricLabelStyle}" />
+                    <TextBlock Text="Automatic restarts" Style="{StaticResource MetricLabelStyle}" />
                 </StackPanel>
             </Border>
         </VariableSizedWrapGrid>
 
-        <TextBlock Grid.Row="2" Text="Processes" Style="{StaticResource SectionTitleStyle}" />
+        <TextBlock Grid.Row="2" Text="Parts of the connector" Style="{StaticResource SectionTitleStyle}" />
         <Border Grid.Row="3" Style="{StaticResource PanelStyle}" Padding="0">
             <c:ResultTable x:Name="ProcessTable" EmptyText="The 1C engine is not running." />
         </Border>
 
-        <TextBlock Grid.Row="4" Text="Sessions per infobase" Style="{StaticResource SectionTitleStyle}" />
+        <TextBlock Grid.Row="4" Text="Connections to 1C" Style="{StaticResource SectionTitleStyle}" />
         <Border Grid.Row="5" Style="{StaticResource PanelStyle}" Padding="0">
-            <c:ResultTable x:Name="PoolTable" EmptyText="No sessions open. Sessions open when an infobase is used and close after 5 idle minutes." />
+            <c:ResultTable x:Name="PoolTable" EmptyText="No open connections. One opens when an infobase is used and closes after 5 quiet minutes." />
         </Border>
     </Grid>
 </Page>

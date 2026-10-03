@@ -85,7 +85,7 @@ public static class LegacyValue
             if (raw is null) scope.Add(v, "value");
             // Never read a reference's fields over COM in a row loop: 1C caches every object it
             // loads that way (RefBatch). Without a batch (diagnostics), the literal algorithm.
-            return batch is not null ? batch.Defer(v) : Slow(v, ctx);
+            return batch is not null ? batch.Defer(v!) : Slow(v, ctx);      // IsCom above: never null here
         }
 
         // NULL here means the reference is empty, broken, or of a type without the field;

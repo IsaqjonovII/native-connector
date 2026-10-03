@@ -1,173 +1,332 @@
+using System.Globalization;
 using System.Text.Json.Nodes;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using OneC.Cloud;
+using OneC.Desktop.Controls;
 using OneC.Desktop.Services;
 
 namespace OneC.Desktop.Views;
 
+/// <summary>
+/// The header company's 1C bases in AIBA, listed as the old Connector does (accounting/page.tsx):
+/// the company's cloud records, each matched to the 1C connection on this computer with the same
+/// name — the record's odataName is the local base name, the old app's only key between the two.
+/// One card per infobase (<see cref="InfobaseCard"/>): a company has a handful, each with a sync
+/// state, a local state and a next step — a five-column table of them was mostly empty sheet.
+/// </summary>
 public sealed partial class InfobasesPage : Page
 {
-    private static readonly string[] Columns =
-        { "Name", "Type", "Location", "User", "1C version", "Status", "Sessions", "Engine process" };
+    private static readonly CultureInfo Numbers = new("ru-RU");         // 18 915 285
 
+    /// <summary>
+    /// The cloud's view of the sync (stored rows / expected rows, last error), whoever syncs the
+    /// base — today the old Connector; this app uploads nothing yet (DECISIONS D41).
+    /// </summary>
+    private static (Pill Kind, string Title, string Detail, double? Progress) SyncOf(OneCRecord r)
+    {
+        if (r.LastError is { } e) return (Pill.Bad, "Sync error", e, null);
+        if (r.TotalCount == 0) return (Pill.Neutral, "Not synced yet", "Nothing in AIBA yet", null);
+        string total = r.TotalCount.ToString("N0", Numbers);
+        if (r.Percentage >= 100) return (Pill.Ok, "Synced", $"{total} rows in AIBA", null);
+        string done = ((long)(r.TotalCount * r.Percentage / 100)).ToString("N0", Numbers);
+        return (Pill.Info, $"Syncing · {Math.Floor(r.Percentage):0}%", $"{done} of {total} rows", r.Percentage);
+    }
+
+    // Local status every 3 s (cheap); the company's records every 30 s, as the old app polls.
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(3) };
+    private List<OneCRecord> _records = new();
+    private string? _recordsCompany;
+    private DateTime _recordsAt;
+    private bool _loading;
+    private List<LauncherBase> _launcher = new();
+    private readonly Dictionary<string, InfobaseCard> _cards = new();
+    private Action? _emptyRun;
+    private Dictionary<string, JsonObject> _engine = new(StringComparer.OrdinalIgnoreCase);   // sync state, by local base name
+
+    /// <summary>The sync engine's state of each local base; empty while the engine is not up.</summary>
+    private static async Task<Dictionary<string, JsonObject>> EngineStateAsync()
+    {
+        var map = new Dictionary<string, JsonObject>(StringComparer.OrdinalIgnoreCase);
+        if (App.Supervisor.Client is not { } client) return map;
+        try
+        {
+            foreach (var b in (await client.SyncStatus()).OfType<JsonObject>())
+                map[(string)b["baseId"]!] = b;
+        }
+        catch (Exception e) when (e is EdgeException or HttpRequestException or TaskCanceledException) { }
+        return map;
+    }
+
+    /// <summary>The engine's words for the sync column, and the link to the base's sync screen.</summary>
+    private static (Pill Kind, string Title, string Detail, double? Progress) SyncOf(JsonObject b)
+    {
+        var (title, pill) = SyncText.State(b);
+        int done = b["tablesDone"]?.GetValue<int>() ?? 0, total = b["tablesTotal"]?.GetValue<int>() ?? 0;
+        int dead = b["deadLetters"]?.GetValue<int>() ?? 0;
+        string detail = dead > 0 ? $"{SyncText.Count(dead, "thing")} to decide · test target"
+                      : (string)b["mode"]! == "snapshot" ? "copying to the test target"
+                      : $"{total} tables · test target";
+        return (pill, title, detail, (string)b["mode"]! == "snapshot" && total > 0 ? 100.0 * done / total : null);
+    }
+
+    private static RowCommand SyncOpen(string baseName) => new("Sync details", "",() => App.Window?.Go("sync", baseName));
+
+    /// <summary>
+    /// A base the engine syncs that has no AIBA record here (or nobody is signed in): it still gets a
+    /// card, so its sync is visible on this screen.
+    /// </summary>
+    private static InfobaseCardModel LocalModel(string baseName, JsonObject b, JsonArray? hosts)
+    {
+        var sync = SyncOf(b);
+        string state = ConnectionsPage.EngineStatus(baseName, hosts);
+        return new InfobaseCardModel("local:" + baseName, baseName, $"1C base {baseName}  ·  only on this computer, not in AIBA",
+                                     sync.Kind, sync.Title, sync.Detail, sync.Progress,
+                                     ConnectionsPage.StatusPill(state), state, "on this computer",
+                                     new RowCommand("Browse", "", () => App.Window?.Go("browse", baseName)), Array.Empty<RowCommand>())
+        { SyncOpen = SyncOpen(baseName) };
+    }
 
     public InfobasesPage()
     {
         InitializeComponent();
-        Table.SelectionChanged += (_, _) => UpdateButtons();
-        Table.RowInvoked += (_, _) => UpdateButtons();
-        // Refresh on engine state changes too, so rows never say "Starting…" under a status
-        // bar that already says connected (the timer alone lagged up to 3 s).
-        EventHandler onState = (_, _) => DispatcherQueue.TryEnqueue(async () => { await Refresh(); UpdateButtons(); });
-        Loaded += async (_, _) => { App.Supervisor.StateChanged += onState; _timer.Start(); await Refresh(); };
-        Unloaded += (_, _) => { App.Supervisor.StateChanged -= onState; _timer.Stop(); };
-        _timer.Tick += async (_, _) => { await Refresh(); UpdateButtons(); };
-    }
-
-    private StoredBase? Selected =>
-        Table.SelectedIndex >= 0 && Table.SelectedIndex < App.Bases.Bases.Count ? App.Bases.Bases[Table.SelectedIndex] : null;
-
-    private void UpdateButtons()
-    {
-        bool one = Selected is not null;
-        EditButton.IsEnabled = one;
-        RemoveButton.IsEnabled = one;
-        TestButton.IsEnabled = one && App.Supervisor.State == SupervisorState.Running;
-    }
-
-    private async Task Refresh()
-    {
-        JsonArray? hosts = null;
-        if (App.Supervisor is { State: SupervisorState.Running, Client: { } client })
+        // Kept alive between visits (user: "loading this screen every time"): the cards stay, and the
+        // list refreshes in the background — polling below — instead of reloading on every open.
+        NavigationCacheMode = Microsoft.UI.Xaml.Navigation.NavigationCacheMode.Required;
+        EventHandler onCloud = (_, _) => DispatcherQueue.TryEnqueue(async () => await Refresh(reload: true));
+        EventHandler onState = (_, _) => DispatcherQueue.TryEnqueue(async () => await Refresh(reload: false));
+        Loaded += async (_, _) =>
         {
-            try { hosts = await client.Hosts(); }
-            catch (Exception ex) when (ex is HttpRequestException or EdgeException or TaskCanceledException) { }
+            App.CompaniesChanged += onCloud;
+            App.CloudChanged += onCloud;
+            App.Supervisor.StateChanged += onState;
+            _timer.Start();
+            await Refresh(reload: false);              // cached cards at once; reloads only when 30 s old
+            Cards.ChildrenTransitions = new Microsoft.UI.Xaml.Media.Animation.TransitionCollection
+            {
+                new Microsoft.UI.Xaml.Media.Animation.AddDeleteThemeTransition()
+            };
+        };
+        Unloaded += (_, _) =>
+        {
+            App.CompaniesChanged -= onCloud;
+            App.CloudChanged -= onCloud;
+            App.Supervisor.StateChanged -= onState;
+            _timer.Stop();
+            Cards.ChildrenTransitions = null;          // no entrance replay on the next visit
+        };
+        _timer.Tick += async (_, _) => await Refresh(reload: false);
+    }
+
+    private async Task Refresh(bool reload)
+    {
+        var company = App.SelectedCompany;
+        AddButton.IsEnabled = App.Cloud.SignedIn && company is not null;
+        Subtitle.Text = company is null
+            ? "The 1C databases of the company chosen at the top."
+            : $"The 1C databases of {company.Name} in AIBA.";
+        _engine = await EngineStateAsync();
+        if (!App.Cloud.SignedIn || company is null)
+        {
+            _records = new();
+            _recordsCompany = null;
+            if (_engine.Count > 0)
+            {
+                // Not signed in to AIBA: the engine's bases only, and how to see the rest.
+                var hostsNow = await ConnectionsPage.HostsAsync();
+                Render(_engine.Keys.Order(StringComparer.CurrentCultureIgnoreCase).Select(n => LocalModel(n, _engine[n], hostsNow)).ToList());
+                Empty.Visibility = Visibility.Collapsed;
+                AddButton.Visibility = Visibility.Collapsed;
+                Subtitle.Text = App.Cloud.SignedIn
+                    ? "Choose a company at the top to see its infobases. Below: the bases this computer syncs."
+                    : "Sign in to AIBA to see your companies' infobases. Below: the bases this computer syncs.";
+                return;
+            }
+            if (!App.Cloud.SignedIn)
+                ShowEmpty("Sign in to AIBA", "Your companies' infobases appear here.", "Sign in", () => _ = App.Window?.SignInAsync());
+            else
+                ShowEmpty("Choose a company", App.CompaniesError ?? "Pick one at the top right.");
+            return;
         }
 
-        var rows = App.Bases.Bases.Select(b =>
+        bool stale = reload || _recordsCompany != company.Id || DateTime.UtcNow - _recordsAt > TimeSpan.FromSeconds(30);
+        if (stale && !_loading)
         {
-            var host = hosts?.FirstOrDefault(h => h!["bases"]!.AsArray().Any(n => n!.GetValue<string>() == b.Name));
-            var pool = host?["stats"]?["pools"]?.AsArray().FirstOrDefault(p => p!["baseName"]!.GetValue<string>() == b.Name);
-            var unplaced = App.Supervisor.Unplaceable.FirstOrDefault(u => u.Name == b.Name);
-
-            string status = App.Supervisor.State switch
+            _loading = true;
+            if (_recordsCompany != company.Id) ShowEmpty("", "Loading…");
+            try
             {
-                SupervisorState.Running when unplaced.Name is not null => "Cannot start: " + unplaced.Reason,
-                SupervisorState.Running when host is null => "Waiting for the engine",
-                SupervisorState.Running => host!["state"]!.GetValue<string>() == "Ready"
-                                               ? (pool is null ? "Ready (idle)" : "Ready")
-                                               : "Engine " + host["state"]!.GetValue<string>().ToLowerInvariant(),
-                SupervisorState.Starting => "Starting…",
-                _ => "Engine off"
-            };
-            string sessions = pool is null ? "0"
-                : $"{pool["live"]} open, {pool["inUse"]} busy";
-            string engine = host is null ? "" : $"{host["key"]} · pid {host["pid"]}";
+                // The 1C launcher's list: which records this computer could connect.
+                try { _launcher = LauncherBases.Read(); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+                var list = await App.Cloud.OneCListAsync(company.Id);
+                if (App.SelectedCompany?.Id == company.Id)          // else the company changed meanwhile; next tick reloads
+                {
+                    _records = list;
+                    _recordsCompany = company.Id;
+                    _recordsAt = DateTime.UtcNow;
+                }
+            }
+            catch (CloudException ex) { LoadFailed(ex.Message); }
+            catch (HttpRequestException) { LoadFailed("The AIBA cloud is not reachable."); }
+            catch (TaskCanceledException) { LoadFailed("The AIBA cloud did not answer in time."); }
+            finally { _loading = false; }
+        }
+        if (_recordsCompany != company.Id) return;
 
-            return new string?[]
-            {
-                b.Name, b.Kind == BaseKind.Server ? "Server" : "File", b.Location, b.User,
-                string.IsNullOrEmpty(b.PlatformVersion) ? "any" : b.PlatformVersion, status, sessions, engine
-            };
-        }).ToList();
-
-        Table.SetData(Columns, rows, keepLayout: true);
+        var hosts = await ConnectionsPage.HostsAsync();
+        var models = _records.OrderBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase).Select(r => Model(r, hosts)).ToList();
+        models.AddRange(_engine.Keys.Where(n => !_records.Any(r => r.OdataName.Equals(n, StringComparison.OrdinalIgnoreCase)))
+                               .Order(StringComparer.CurrentCultureIgnoreCase).Select(n => LocalModel(n, _engine[n], hosts)));
+        Render(models);
+        if (models.Count == 0)
+            ShowEmpty("No infobases here yet", $"Add one of this computer's 1C bases to {company.Name}.",
+                      "Add infobase", () => Add_Click(this, new RoutedEventArgs()));
+        else
+        {
+            Empty.Visibility = Visibility.Collapsed;
+            AddButton.Visibility = Visibility.Visible;
+        }
     }
 
-    private async void Add_Click(object sender, RoutedEventArgs e)
+    private InfobaseCardModel Model(OneCRecord r, JsonArray? hosts)
     {
-        var b = await BaseDialog.ShowAsync(XamlRoot, null);
+        // The engine's state of the local base replaces the cloud's numbers.
+        var engine = _engine.GetValueOrDefault(r.OdataName);
+        var sync = engine is not null ? SyncOf(engine) : SyncOf(r);
+        var here = HereOf(r, hosts);
+        string meta = $"1C base {r.OdataName}  ·  {Software(r.Provider)}" + (r.IsMultiOrg ? "  ·  shared by several organisations" : "");
+        return new InfobaseCardModel(r.Id, r.Name, meta, sync.Kind, sync.Title, sync.Detail, sync.Progress,
+                                     here.Kind, here.Title, here.Detail, here.Next,
+                                     new[] { new RowCommand("Delete from AIBA", "", () => Delete(r.Id), Destructive: true) })
+        { SyncOpen = engine is not null ? SyncOpen((string)engine["baseId"]!) : null };
+    }
+
+    /// <summary>
+    /// The record's base on this computer — the local connection named as its odataName, as the old
+    /// app matches — and the natural next step: Browse it, or Connect it when 1C's list has it.
+    /// </summary>
+    private (Pill Kind, string Title, string Detail, RowCommand? Next) HereOf(OneCRecord r, JsonArray? hosts)
+    {
+        var local = App.Bases.Bases.FirstOrDefault(b => b.Name.Equals(r.OdataName, StringComparison.OrdinalIgnoreCase));
+        if (local is not null)
+        {
+            string state = ConnectionsPage.EngineStatus(local.Name, hosts);
+            return (ConnectionsPage.StatusPill(state), state, "on this computer",
+                    new RowCommand("Browse", "", () => App.Window?.Go("browse", local.Name)));
+        }
+        if (r.IsMultiOrg) return (Pill.Neutral, "Shared base", "served by its main connection", null);
+        var inList = _launcher.FirstOrDefault(l => l.Kind != LauncherKind.Web && l.Name.Equals(r.OdataName, StringComparison.OrdinalIgnoreCase));
+        return inList is not null
+            ? (Pill.Neutral, "Not connected here", "it is in 1C's list on this computer",
+               new RowCommand("Connect", "", () => ConnectHere(inList)))
+            : (Pill.Neutral, "Not on this computer", $"no 1C base named “{r.OdataName}” here", null);
+    }
+
+    /// <summary>Cards in order, updated in place by record id: polling never re-creates one.</summary>
+    private void Render(IReadOnlyList<InfobaseCardModel> models)
+    {
+        var keys = models.Select(m => m.Key).ToHashSet();
+        foreach (var gone in _cards.Keys.Where(k => !keys.Contains(k)).ToList())
+        {
+            Cards.Children.Remove(_cards[gone]);
+            _cards.Remove(gone);
+        }
+        for (int i = 0; i < models.Count; i++)
+        {
+            var m = models[i];
+            if (!_cards.TryGetValue(m.Key, out var card))
+            {
+                card = new InfobaseCard(m.Key);
+                _cards[m.Key] = card;
+                Cards.Children.Insert(Math.Min(i, Cards.Children.Count), card);
+            }
+            else if (Cards.Children.IndexOf(card) != i)
+            {
+                Cards.Children.Remove(card);
+                Cards.Children.Insert(Math.Min(i, Cards.Children.Count), card);
+            }
+            card.Update(m);
+        }
+    }
+
+    private void ShowEmpty(string title, string text, string? button = null, Action? run = null)
+    {
+        Render(Array.Empty<InfobaseCardModel>());
+        AddButton.Visibility = Visibility.Collapsed;          // the empty state has its own button; never two
+        EmptyTitle.Text = title;
+        EmptyTitle.Visibility = title.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        EmptyText.Text = text;
+        _emptyRun = run;
+        EmptyButton.Content = button;
+        EmptyButton.Visibility = button is not null && run is not null ? Visibility.Visible : Visibility.Collapsed;
+        Empty.Visibility = Visibility.Visible;
+    }
+
+    private void EmptyButton_Click(object sender, RoutedEventArgs e) => _emptyRun?.Invoke();
+
+    /// <summary>Connect this computer's base of the same name, right from its card.</summary>
+    private async void ConnectHere(LauncherBase l)
+    {
+        var existing = App.Bases.Bases.FirstOrDefault(b => b.Name.Equals(l.Name, StringComparison.OrdinalIgnoreCase));
+        var b = await ConnectDialog.ShowAsync(XamlRoot, l.Name, l, existing);
         if (b is null) return;
         App.Bases.Upsert(b);
-        await AfterChange($"Added “{b.Name}”. Restarting the engine with the new list…");
+        Show(InfoBarSeverity.Informational, $"Connected “{b.Name}”. Starting the 1C engine with it…");
+        await App.RestartSupervisorAsync();
+        await Refresh(reload: false);
     }
 
-    private async void Edit_Click(object sender, RoutedEventArgs e)
+    private async void Delete(string id)
     {
-        if (Selected is not { } current) return;
-        var b = await BaseDialog.ShowAsync(XamlRoot, current);
-        if (b is null) return;
-        App.Bases.Upsert(b, current.Name);
-        await AfterChange($"Saved “{b.Name}”. Restarting the engine…");
-    }
-
-    private async void Remove_Click(object sender, RoutedEventArgs e)
-    {
-        if (Selected is not { } b) return;
+        if (_records.FirstOrDefault(r => r.Id == id) is not { } rec || App.SelectedCompany is not { } company) return;
         var confirm = new ContentDialog
         {
             XamlRoot = XamlRoot,
-            Title = $"Remove “{b.Name}”?",
-            Content = "This only removes it from this computer's list. Nothing in the 1C database is changed.",
-            PrimaryButtonText = "Remove",
+            RequestedTheme = ActualTheme,
+            Title = $"Delete “{rec.Name}” from AIBA?",
+            Content = $"This deletes the infobase and all its data synced to AIBA, for everyone in {company.Name}. " +
+                      "It can't be undone. The 1C base on this computer is not changed.",
+            PrimaryButtonText = "Delete",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close
         };
         if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
-        App.Bases.Remove(b.Name);
-        await AfterChange($"Removed “{b.Name}”.");
-    }
-
-    private async void Test_Click(object sender, RoutedEventArgs e)
-    {
-        if (Selected is not { } b || App.Supervisor.Client is not { } client) return;
-        TestButton.IsEnabled = false;
-        Show(InfoBarSeverity.Informational, $"Connecting to “{b.Name}”…");
         try
         {
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-            var t = await client.Test(b.Name);
-            string config = t["synonym"]?.GetValue<string>() is { Length: > 0 } syn ? syn : t["configuration"]?.GetValue<string>() ?? "";
-            Show(InfoBarSeverity.Success,
-                 $"“{b.Name}” works: {config} {t["configurationVersion"]} on 1C {t["platformVersion"]} " +
-                 $"({sw.ElapsedMilliseconds:N0} ms).");
+            await App.Cloud.OneCDeleteAsync(rec.Id);
+            if (App.Cloud.Session is { } s) App.Links.RemoveRecord(s.Env, s.UserId, rec.Id);   // no more heartbeat for it
+            Show(InfoBarSeverity.Success, $"Deleted “{rec.Name}” from {company.Name}. AIBA removes its data in the background.");
+            await Refresh(reload: true);
         }
-        catch (EdgeException ex) { Show(InfoBarSeverity.Error, ex.Friendly); }
-        catch (HttpRequestException ex) { Show(InfoBarSeverity.Error, "The engine is not reachable: " + ex.Message); }
-        finally { UpdateButtons(); }
+        catch (CloudException ex) { Show(InfoBarSeverity.Error, "Could not delete: " + ex.Message); }
+        catch (HttpRequestException) { Show(InfoBarSeverity.Error, "Could not delete: the AIBA cloud is not reachable."); }
     }
 
-    private async void ImportConnector_Click(object sender, RoutedEventArgs e)
+    private void LoadFailed(string text)
     {
-        var found = BaseStore.FindOldConnectorConfigs();
-        if (found.Count == 0)
-        {
-            Show(InfoBarSeverity.Warning, "No AIBA Connector settings were found on this computer.");
-            return;
-        }
-        try
-        {
-            var report = App.Bases.ImportOldConnectorConfig(found[0]);
-            string skipped = report.Skipped.Count == 0 ? "" : $" Skipped: {string.Join(", ", report.Skipped)}.";
-            await AfterChange($"Imported {report.Imported} infobase{(report.Imported == 1 ? "" : "s")} from the AIBA Connector.{skipped}");
-        }
-        catch (Exception ex) { Show(InfoBarSeverity.Error, "Could not read the AIBA Connector settings: " + ex.Message); }
+        _recordsAt = DateTime.UtcNow;                                // retry in 30 s, not every tick
+        if (_recordsCompany != App.SelectedCompany?.Id)
+            ShowEmpty("Could not load the infobases", text, "Try again", () => _ = Refresh(reload: true));
+        else Show(InfoBarSeverity.Warning, "Could not refresh the list: " + text);
     }
 
-    private async void Import_Click(object sender, RoutedEventArgs e)
+    private static string Software(string provider) => provider switch
     {
-        var picker = new Windows.Storage.Pickers.FileOpenPicker();
-        picker.FileTypeFilter.Add(".json");
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(App.Window));
-        var file = await picker.PickSingleFileAsync();
-        if (file is null) return;
-        try
-        {
-            int n = App.Bases.ImportConnectionStrings(file.Path);
-            await AfterChange($"Imported {n} infobase{(n == 1 ? "" : "s")}. The file itself was not changed.");
-        }
-        catch (Exception ex) { Show(InfoBarSeverity.Error, "Could not import that file: " + ex.Message); }
-    }
+        "unisoft" => "Unisoft",
+        "venkon" => "Venkon",
+        "1uz" => "1UZ",
+        _ => provider
+    };
 
-    private async Task AfterChange(string message)
+    private async void Add_Click(object sender, RoutedEventArgs e)
     {
-        Show(InfoBarSeverity.Informational, message);
-        await Refresh();
-        await App.RestartSupervisorAsync();
-        await Refresh();
-        if (App.Supervisor.State == SupervisorState.Failed)
-            Show(InfoBarSeverity.Error, "The engine did not start: " + App.Supervisor.LastError);
+        if (App.SelectedCompany is not { } company) return;
+        var existing = _recordsCompany == company.Id ? _records : new List<OneCRecord>();
+        var rec = await AddInfobaseDialog.ShowAsync(XamlRoot, company, existing);
+        if (rec is null) return;
+        Show(InfoBarSeverity.Success, $"Added “{rec.Name}” to {company.Name}.");
+        await Refresh(reload: true);
     }
 
     private void Show(InfoBarSeverity severity, string text)
