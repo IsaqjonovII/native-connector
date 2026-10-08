@@ -1,6 +1,126 @@
 # MIGRATION_STATUS.md — what is actually done
 
-Only things that were built **and** verified are DONE. Last verified: 2026-10-03.
+Only things that were built **and** verified are DONE. Last verified: 2026-10-08.
+
+## Rust onec backend — R0–R10 DONE locally (Sync proven against 1C, security hardened, normal writes round-trip, per-base switch + rollback) (2026-10-08, D51, D52); not committed, no production
+
+Order and plan: `MIGRATION_PLAN.md` (roadmap), `PYTHON_TO_RUST_MIGRATION_PLAN.md`; audit
+`RUST_ONEC_BACKEND_AUDIT.md` (+ `research/rust-backend-audit/` A, B, C); contract `RUST_SYNC_CONTRACT.md`.
+Nothing touched production or a shared server. Python target unchanged in behaviour (it gained the
+coverage call its backend already had).
+
+- **R0 stack:** isolated Postgres 12 cluster (1C's PG 12 binaries, own data dir under
+  `%LOCALAPPDATA%\AIBA-rust-sync-test`, 127.0.0.1:55440; the 1C cluster untouched) + the Rust module
+  on 127.0.0.1:18112 with test secrets made for it (`rust-secrets.json`, outside the repo).
+- **R1 Rust:** `next-modules/onec` branch `feat/sync-api-v1` (worktree `_wt-onec-sync-v1`):
+  `src/sync.rs` (`/api/sync/v1`: capabilities, config, rows, delete, recorder, purge, counts, rows
+  read, coverage, status, presence), `entity_data.source_version` + `recorder_key` + index,
+  `onec.sync_batch`. `cargo test`: 95/95.
+- **R2 Connector:** `src/OneC.Sync.Targets.Rust/RustSyncTarget.cs`; `RecorderSync` is one call for all
+  partitions. Sync suite incl. the live `SyncRustTargetTests` against the local module: **132/132**.
+- **R3 wiring:** `sync.json` `target: "rust:<loopback>"`, `OneC.Supervisor sync-rust create|counts|bench`,
+  `sync-verify` reads Rust, `tools/rust-local.ps1`, `tools/rust-kan.ps1`, `tools/rust-lifecycle-edge.ps1`,
+  `tools/rust-crash.ps1`.
+- **R4 bilim vs 1C:** 8 tables (chart, 3 catalogs, 2 document types, accounting register from
+  2025-08-01, independent info register) into Rust connection 13. `sync-verify` **PASS** — every stored
+  row equal to a fresh 1C read field by field (`measurements/rust-sync/verify-r4-snapshot.txt`).
+- **R5 lifecycle (bilim, test-owned `AIBA_REWRITE_S12_` ПТУ) — PASS, all 7 steps:** create, post,
+  change date + repost, unpost, repost, mark-deleted, delete; after each step Rust changed within
+  2–11 s and `sync-verify` PASSED against 1C (`lifecycle-run.txt`, `verify-r5-*.txt`). The test
+  document is gone from 1C and Rust. Found and fixed on the way:
+  - **Connector bug (not Rust):** the host's list read leaves empty table parts out, its by-id read lists
+    them as `[]`, so one unchanged document had two canonical rows. Fixed in
+    `CanonicalMapper.DropEmptySections` (test `BothReadShapesOfOneDocumentMapToTheSameRow`).
+  - **Environment blocker, separate from Rust:** the first mark-deleted sat inside a bilim file-base stall
+    for 3 h (edge 503 after 65 s, `1Cv8tmp.1CD` written, host CPU flat, main file unchanged). Diagnostics
+    `measurements/rust-sync/bilim-stall-diag-20261007.txt`; the Supervisor's bilim host was restarted with
+    the developer's approval; 1C showed the mark had **not** landed (posted, no mark — Rust agreed); the
+    rerun through the edge marked in 14 s and deleted in 19 s. Writes from a second process (DevBench)
+    beside the host waited ~35 min each on the file base; writes through the host's own edge did not.
+- **R6 multi-org on real data (KAN, read-only; services started for the test and stopped after):**
+  Rust connection 30 with both KAN organisations bound (e14072fe → company 7001, 21c869e7 → 7002).
+  8 tables, documents and the accounting register from 2026-06-01: 34 145 rows; routing equals 1C per
+  organisation (Реализация 748 / 4, ПТУ 617 / 0, ППИ 311 / 3, Хозрасчетный 27 140 / 1), references only
+  in the shared partition. `sync-verify` **PASS**, 0 wrong partition (`verify-r6-kan-multiorg.txt`).
+  A second snapshot from fresh local state re-sent all 34 145 rows: every one answered `unchanged`,
+  nothing rewritten.
+- **R6 recovery:** `tools/rust-crash.ps1`, module killed while a 2000-row batch is held inside its
+  transaction (3 rounds): 0 rows and no batch record afterwards, replay stored 2000; killed after the
+  commit (3 rounds): 2000 stored, replay answered from the batch record (`replayed: true`), nothing
+  written twice. Atomic recorder rollback on a refused line: live contract test.
+- **Coverage — DONE, a cut-over blocker found and closed:** the engine reported none, and the consumer
+  (aiba-next `sotuv.rs mirror_reach_from_onec`) reads a table with no entry as "whole history" — a
+  windowed or half-copied table would have licensed duplicate documents. Now (`BaseSyncAgent`):
+  "loading" (`complete:false`, no date = unknown) is stored before a document/register table's first
+  row; after its snapshot `complete:false, dataFrom:<From>` for a windowed table, `complete:true` for a
+  whole one; to every partition of a movement table; a failed final report is re-sent next activation
+  (test `CoverageIsLoadingBeforeTheFirstRowAndTheRealReachAfter`). Live on KAN: all windowed tables
+  `dataFrom 2026-06-01, complete false` in the shared and both organisation partitions, visible on the
+  consumer's route `/api/internal/admin/onecs/{id}`. Semantics unchanged for consumers.
+- **R8 measurements:** see `PYTHON_TO_RUST_MIGRATION_PLAN.md` §4. Rust module 10–15 MB private; Postgres
+  is the write bottleneck (insert 5 537 rows/s of ~1.2 KB, unchanged re-send 37 106 rows/s, recorder
+  unit p50 3.5 ms).
+- **R7 security / data integrity — DONE locally (2026-10-08).** `/api/sync/v1`:
+  - **Callers:** a service (`X-Service-Secret`, now a constant-time compare, also on the legacy routes
+    and the connector hub), or a user with the aiba-next JWT. For a user: signature + `exp`, `aud` when
+    `AIBA_JWT_AUDIENCE` is set (found: `set_audience` alone let a token without `aud` through, fixed),
+    the token's `tenant` = this tenant (multi: `X-Tenant`; single: `ONEC_TENANT_SLUG`), superadmin
+    refused, companies = aiba-next's own `user_company_ids` rule (responsible employee, employee role,
+    company authz grant) read from the same tenant DB, tenant admins all. Outage of that check = 503.
+  - **No leaks:** a connection or partition of a company the user may not touch answers exactly like one
+    that does not exist (also a binding id used as a connection, and a connection being deleted); every
+    auth failure is the same flat 401.
+  - **Ids:** strict (1–18 digits, no sign/space/leading zero); keys, batch ids, delete keys, coverage table
+    names, status text checked. **Found and fixed: a U+0000 anywhere (key or 1C text) failed the WHOLE
+    batch** (jsonb cannot hold it → 503 retried forever, base paused); now that row alone is rejected
+    `nul_in_data`.
+  - **Maintenance:** `recorder_key` backfill for rows the legacy upload wrote (lower-cased, `<guid>#<n>` only,
+    walks `id` from a stored mark — idempotent, incremental); `sync_batch` retention 7 days
+    (`SYNC_BATCH_RETENTION_DAYS`), chunked; both in ticker T7.
+  - **Proof:** Rust 102/102 incl. DB tests (migrations twice, backfill, retention), token/secret/id unit
+    tests; live `SyncRustSecurityTests` 6/6 against a single-tenant instance (km/authz fixture) and a
+    multi-tenant one (two tenant DBs from a fake loopback central): user/company/partition isolation,
+    identical refusals, ten forged-credential cases, malformed ids, reconcile/delete/purge never leaving
+    the named partition, a t1 token refused on t2, the same numeric id in two tenants never crossing.
+    Migrations re-run on the existing data: 51 table checksums identical before/after.
+- **R9 normal writes — DONE locally (2026-10-08), round trip proven:** Rust command → Supervisor (pulls;
+  opens nothing inbound, D41) → OneC.Host → 1C → Sync → Rust stored state = 1C. Rust: `onec.command` (stored
+  before anyone runs it; one idempotency key per connection; queued → dispatched (lease) → succeeded /
+  failed, lease expiry re-dispatches, `dead` after 5 attempts), routes `commands`, `commands/lease`,
+  `commands/{id}`, `commands/{id}/result`; only the normal primitives (`document.create/update/post/
+  unpost/markDeleted`, `catalog.create/update`); refused before storing: unknown kinds (no delete,
+  no procedures), `exchange`, any `_` directive but `_idempotencyMarker`, a create without the AIBA
+  marker. Connector: `CommandRunner` (`"commands": true` in sync.json; one at a time, oldest first;
+  transport/timeout/retryable errors left for the lease, the rest reported with 1C's own error).
+  Host: new `CatalogWriter` (create idempotent by marker, compare-and-set update with a per-field
+  `conflict` answer, only catalogs with Комментарий and only AIBA-owned items; owned delete for local
+  test cleanup only). Live on bilim (`r9-run.txt`, `r9-catalog-run.txt`): document create (draft) →
+  same key = same command → new key, same marker = same 1C document → post → update (date) + repost →
+  unpost → repost → mark for deletion; catalog create → same marker → CAS rename → stale CAS refused
+  ("expected '…', 1C holds '… (renamed)'") → foreign item refused (D18) → Банки refused (no Комментарий).
+  After EVERY write Sync brought it into Rust in 0.3–23 s and `sync-verify` PASSED against 1C; refused
+  commands changed nothing; test objects deleted. .NET Sync suite 151/151.
+- **R10 per-base switch — DONE locally (2026-10-08), isolated backends only.** `TargetBinding`
+  (`sync-targets.json` beside the sync state): one backend per base; a run naming another backend is
+  refused unless `"switch": true`; each backend keeps its own local sync state (a switch copies in full
+  into a backend never fed; a switch BACK resumes that backend's own cursor and catches up). Live on bilim
+  (`r10-run.txt`) between the local Rust module (connection 13) and the isolated local backend/1c
+  (Docker Mongo `aiba_1c_sync_test` / Redis 9, every setting explicit, `.env` unused, record
+  `6ac74a64…`): refused without the switch; switch → first copy into backend/1c in 28 s, `sync-verify`
+  PASS (new local-backend/1c read mode); a document created and posted in 1C while on Python reached
+  backend/1c (PASS) while Rust received nothing (row count and last write unchanged); rollback → Rust
+  caught that document up in 4.3 s from its own cursor, PASS; cleanup PASS. Coverage after the switch:
+  backend/1c got loading → final (register `complete:false, 2025-08-01`, the rest whole).
+  **Found and fixed:** a base copied before coverage existed (bilim → Rust 13) had NO coverage — the
+  "whole history" default — and the engine only reported it during a copy. Now every activation sends the
+  final reach of a copied table once (per window), with no new copy; verified on connection 13 (2000 rows,
+  nothing rewritten). Tests: `SyncTargetBindingTests`, `ABaseCopiedWithoutCoverageGetsItOnTheNextRun`;
+  Sync suite 153/153.
+- **Open:** production stays closed until the developer approves; the bilim file-base stall (cause
+  unknown, environment); the product decision on writes to objects AIBA did not create (D18 refuses
+  them; old flows posted user drafts and updated customer catalog items); a real per-tenant switch also
+  needs the old Connector off for the base (D-1) and the cloud's readers pointed at the backend that is
+  active.
 
 ## Old Connector reverse-engineering — DONE 2026-10-03 (read-only)
 

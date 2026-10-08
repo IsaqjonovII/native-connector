@@ -34,8 +34,23 @@ public interface ITokenSource
 /// count is not proof of storage (its totalSkipped is defined as totalItems − totalInserted);
 /// concurrent writers lose silently; no transaction between a document and its movements.</para>
 /// </summary>
-public sealed class PythonMongoSyncTarget(HttpClient http, ITokenSource tokens, string connectionId) : IBackendSyncTarget
+public sealed class PythonMongoSyncTarget(HttpClient http, ITokenSource tokens, string connectionId) : IBackendSyncTarget, ICoverageTarget
 {
+    /// <summary>backend/1c <c>POST /api/v2/entity/data-coverage</c> (v2 entity.py:614): merged per table into <c>OneC.dataCoverage</c>.</summary>
+    public async Task<TargetResult> ReportCoverageAsync(string partitionId, IReadOnlyList<TableCoverage> tables, CancellationToken ct)
+    {
+        var body = new JsonObject
+        {
+            ["oneCId"] = partitionId,
+            ["tables"] = new JsonArray(tables.Select(t => (JsonNode)new JsonObject
+            {
+                ["table"] = t.Table, ["dataFrom"] = t.DataFrom?.ToString("yyyy-MM-dd"), ["complete"] = t.Complete
+            }).ToArray())
+        };
+        var (r, _) = await SendJsonAsync(HttpMethod.Post, "api/v2/entity/data-coverage", body, ct);
+        return ForPartition(r, partitionId);
+    }
+
     public string Kind => "python-v2";
     public int MaxBatchBytes { get; init; } = 34 * 1024 * 1024;
 

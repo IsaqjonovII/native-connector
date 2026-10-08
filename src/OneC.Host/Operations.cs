@@ -26,6 +26,7 @@ public sealed class Operations
     private readonly TableCatalog _tables;
     private readonly WriteService _writes;
     private readonly DocumentWriter _documentWriter;
+    private readonly CatalogWriter _catalogWriter;
     private readonly DateTime _startedUtc = DateTime.UtcNow;
 
     public Operations(SessionManager m, string writePrefix = "AIBA_")
@@ -42,6 +43,7 @@ public sealed class Operations
         _tables = new TableCatalog(m);
         _writes = new WriteService(m, writePrefix);
         _documentWriter = new DocumentWriter(_writes);
+        _catalogWriter = new CatalogWriter(_writes);
     }
 
     public IpcResponse Execute(IpcRequest req, CancellationToken cancel)
@@ -147,6 +149,12 @@ public sealed class Operations
                 ? IpcJson.ToNode(new { id = _writes.MarkForDeletion(Base(r), Str(a, "docType"), Str(a, "ref"), true, ct).Ref, marked = true })
                 : IpcJson.ToNode(new { id = _writes.Delete(Base(r), Str(a, "docType"), Str(a, "ref"), ct).Ref, deleted = true }),
             Ops.FindOwned => IpcJson.ToNode(new { refs = _writes.FindOwned(Base(r), Str(a, "docType"), Str(a, "prefix"), ct) }),
+            Ops.CatalogCreate => Catalog(_catalogWriter.Create(Base(r), Str(a, "catalog"),
+                a["body"] as JsonObject ?? throw new ArgumentException("'body' must be the item as a JSON object"), ct)),
+            Ops.CatalogUpdate => Catalog(_catalogWriter.CompareAndSet(Base(r), Str(a, "catalog"), Str(a, "ref"),
+                a["expected"] as JsonObject ?? new JsonObject(),
+                a["set"] as JsonObject ?? throw new ArgumentException("'set' must be an object of the fields to change"), ct)),
+            Ops.CatalogDelete => IpcJson.ToNode(new { id = _catalogWriter.DeleteOwned(Base(r), Str(a, "catalog"), Str(a, "ref"), ct), deleted = true }),
             _ => throw new ArgumentException($"unknown op '{r.Op}'")
         };
     }
@@ -344,6 +352,12 @@ public sealed class Operations
     /// exchange?</c>. <c>exchange=true</c> is refused — exchange mode posts without movements
     /// and is never used by this host (workspace rule, quirk Q1).
     /// </summary>
+    private static JsonNode? Catalog(CatalogWritten c) => IpcJson.ToNode(new
+    {
+        id = c.Id, code = c.Code, name = c.Name, created = c.Created, idempotent = c.Idempotent,
+        fillDiagnostics = c.Diagnostics.Count == 0 ? null : c.Diagnostics, sessionId = c.SessionId
+    });
+
     private JsonNode? CreateOp(IpcRequest r, JsonObject a, CancellationToken ct)
     {
         if (a["exchange"]?.GetValue<bool>() == true)

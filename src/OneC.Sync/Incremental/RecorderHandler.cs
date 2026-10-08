@@ -87,14 +87,13 @@ public sealed class SyncRecorderHandler(SyncDb db, IOneCReader reader, IBackendS
 
         if (caps.AtomicRecorder)
         {
-            foreach (var p in touch)
-            {
-                var sets = Registers.Select(reg => new MovementSet(reg.Table,
-                    byPartition.TryGetValue(p, out var m) && m.TryGetValue(reg, out var l) ? l.Select(x => x.Row).ToList() : new List<SyncRow>())).ToList();
-                var r = await target.SyncRecorderAtomicAsync(new RecorderSync(Guid.NewGuid().ToString("N"), p, recorder, doc?.Row.SourceVersion,
-                    docTable?.Table ?? "", p == docPartition ? doc!.Row : null, sets), ct);
-                if (!r.Ok) throw new SyncPausedException(r.Outcome, $"recorder {recorder} in {p}: {r.Outcome} {r.Message}", r.HttpStatus);
-            }
+            // One call, one backend transaction for the whole unit — every partition it touches,
+            // so an organisation change never leaves the document in two places in between.
+            var sets = byPartition.SelectMany(kv => kv.Value.Select(m => new PartitionMovements(kv.Key, m.Key.Table, m.Value.Select(x => x.Row).ToList())))
+                                  .ToList();
+            var r = await target.SyncRecorderAtomicAsync(new RecorderSync(Guid.NewGuid().ToString("N"), recorder, doc?.Row.SourceVersion,
+                docTable?.Table ?? "", docPartition, docPartition is null ? null : doc!.Row, touch, Registers.Select(reg => reg.Table).ToList(), sets), ct);
+            if (!r.Ok) throw new SyncPausedException(r.Outcome, $"recorder {recorder}: {r.Outcome} {r.Message}", r.HttpStatus);
         }
         else
         {

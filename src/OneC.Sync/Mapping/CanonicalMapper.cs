@@ -32,6 +32,7 @@ public static class CanonicalMapper
         string? dataVersion = JsJson.Text(row["dataVersion"]);
         row.Remove("dataVersion");
         row["__rowKey"] = key;
+        DropEmptySections(row);
         string? org = JsJson.Text(row["orgRef"]);
         var sb = new StringBuilder(512);
         JsJson.Write(sb, row);
@@ -51,6 +52,20 @@ public static class CanonicalMapper
         return Convert.TryFromBase64String(dataVersion, b, out int n) && n == 8
             ? (long)System.Buffers.Binary.BinaryPrimitives.ReadUInt64BigEndian(b) & long.MaxValue
             : null;
+    }
+
+    /// <summary>
+    /// One canonical shape per object, whichever read produced it: the host's list read leaves an
+    /// empty table part out, its by-id read (the old adapter's by-id shape, main.os:8413) lists it as
+    /// []. Without this, the same unchanged document stored by the snapshot and re-read by an
+    /// incremental item differed (R5, 2026-10-07: a new document compared unequal to 1C's list read).
+    /// Empty parts are dropped; no parts at all = no <c>tabularSections</c> key.
+    /// </summary>
+    public static void DropEmptySections(JsonObject row)
+    {
+        if (row["tabularSections"] is not JsonObject ts) return;
+        foreach (var name in ts.Where(kv => kv.Value is JsonArray { Count: 0 }).Select(kv => kv.Key).ToList()) ts.Remove(name);
+        if (ts.Count == 0) row.Remove("tabularSections");
     }
 
     public static string Key(TablePlan t, JsonObject row)

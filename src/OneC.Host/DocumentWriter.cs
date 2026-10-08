@@ -60,9 +60,9 @@ public sealed class DocumentWriter
     /// Two creates with the same marker must not both miss the lookup and both write. Striped
     /// by (base, marker): bounded, and a marker always maps to the same stripe in this host.
     /// </summary>
-    private static readonly SemaphoreSlim[] MarkerStripes = Enumerable.Range(0, 64).Select(_ => new SemaphoreSlim(1, 1)).ToArray();
+    internal static readonly SemaphoreSlim[] MarkerStripes = Enumerable.Range(0, 64).Select(_ => new SemaphoreSlim(1, 1)).ToArray();
 
-    private static readonly object Invalid = new();
+    internal static readonly object Invalid = new();
 
     private readonly WriteService _writes;
 
@@ -243,7 +243,7 @@ public sealed class DocumentWriter
         });
     }
 
-    private static void Reject(List<WriteDiagnostic> diagnostics, string what)
+    internal static void Reject(List<WriteDiagnostic> diagnostics, string what)
     {
         var errors = diagnostics.Where(d => d.Level == WriteDiagnostic.Error).ToList();
         if (errors.Count > 0)
@@ -317,7 +317,7 @@ public sealed class DocumentWriter
     /// diagnostic. A string goes to a string-typed field as text — even when it looks like a
     /// date — then to a date, number or boolean field by strict parsing, then to references.
     /// </summary>
-    private static object? Convert(string field, FieldType type, JsonNode value, object? ownerHint,
+    internal static object? Convert(string field, FieldType type, JsonNode value, object? ownerHint,
                                    RefResolver resolver, List<WriteDiagnostic> diagnostics)
     {
         object? Fail(string code, string message)
@@ -368,7 +368,7 @@ public sealed class DocumentWriter
     /// Sets one value; a number is read back, and a value 1C changed (rounded to the field's
     /// precision) is an ERROR — the old code set values and moved on (quirk Q13).
     /// </summary>
-    private static void Set(SessionContext ctx, object target, string member, object? value, string where,
+    internal static void Set(SessionContext ctx, object target, string member, object? value, string where,
                             List<WriteDiagnostic> diagnostics)
     {
         if (ReferenceEquals(value, Invalid)) return;

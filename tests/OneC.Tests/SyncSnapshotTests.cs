@@ -267,6 +267,24 @@ public sealed class SyncSnapshotTests : IDisposable
                          .Replace(",\"id\":\"" + FakeOneC.Guid(1) + "\"", ""));
     }
 
+    /// <summary>R5 2026-10-07: the host's list read and its by-id read must map to the same canonical row.</summary>
+    [Fact]
+    public void BothReadShapesOfOneDocumentMapToTheSameRow()
+    {
+        var doc = new TablePlan("Document_D", "D", Families.Document, true);
+        JsonObject Line() => new() { ["lineNumber"] = 1, ["Сумма"] = 10 };
+        var listShape = new JsonObject { ["id"] = FakeOneC.Guid(1), ["tabularSections"] = new JsonObject { ["Услуги"] = new JsonArray(Line()) } };
+        var byIdShape = new JsonObject
+        {
+            ["id"] = FakeOneC.Guid(1),
+            ["tabularSections"] = new JsonObject { ["Товары"] = new JsonArray(), ["Услуги"] = new JsonArray(Line()), ["АгентскиеУслуги"] = new JsonArray() }
+        };
+        Assert.Equal(CanonicalMapper.Map(doc, listShape).Row.Json, CanonicalMapper.Map(doc, byIdShape).Row.Json);
+        // A document with no lines at all: no tabularSections in either shape.
+        var none = CanonicalMapper.Map(doc, new JsonObject { ["id"] = FakeOneC.Guid(2), ["tabularSections"] = new JsonObject { ["Товары"] = new JsonArray() } });
+        Assert.DoesNotContain("tabularSections", System.Text.Encoding.UTF8.GetString(none.Row.Json));
+    }
+
     /// <summary>§17: the engine branches on capabilities only, never on the target's Kind.</summary>
     [Fact]
     public void EngineCodeNeverBranchesOnTheTargetKind()

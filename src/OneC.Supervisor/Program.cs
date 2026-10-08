@@ -33,6 +33,16 @@ public static class Program
                                        int.TryParse(Arg(argv, "page"), out int pg) ? pg : 500);
         }
         if (mode == "sync-dev") return await SyncDev.Run(argv, n => Arg(argv, n));
+        if (mode == "sync-rust") return await RustBackend.Run(argv, n => Arg(argv, n));
+        // R10: one record on the ISOLATED local backend/1c for a base (loopback only), kept across runs.
+        if (mode == "sync-local" && argv.Length > 1 && argv[1] == "create")
+        {
+            string url = Arg(argv, "url") ?? "http://127.0.0.1:18041";
+            if (!new Uri(url).IsLoopback) { Console.Error.WriteLine("sync-local: loopback only"); return 1; }
+            var (_, id) = await LocalBackend.ConnectAsync(url, Arg(argv, "secrets") ?? throw new ArgumentException("--secrets F"), Arg(argv, "base") ?? "sync");
+            Console.WriteLine($"created local backend/1c record {id}");
+            return 0;
+        }
         if (mode == "sync-verify" && basesFile is not null && Arg(argv, "sync-config") is { } verifyConfig)
             return await SyncVerify.Run(JsonSerializer.Deserialize<List<OneCBase>>(File.ReadAllText(basesFile))!,
                                         new SupervisorOptions { HostExe = Arg(argv, "host") ?? DefaultHostExe() }, verifyConfig, Arg(argv, "report"));
@@ -40,7 +50,7 @@ public static class Program
         {
             Console.WriteLine("OneC.Supervisor run|verify --bases <list.json> | --bases-stdin [--port N] [--token T] [--sync-config sync.json] " +
                               "[--file-version 8.3.18.1289] [--doc ПоступлениеТоваровУслуг] [--host OneC.Host.exe]\n" +
-                              "OneC.Supervisor sync-snapshot|sync-verify|sync-dev …  sync measurement and S12 helpers (DEV_SYNC_TEST_RUNBOOK.md)");
+                              "OneC.Supervisor sync-snapshot|sync-verify|sync-dev|sync-rust …  sync measurement, S12 and local Rust helpers");
             return 1;
         }
 
@@ -76,6 +86,7 @@ public static class Program
                                                          unplaceable = sup.Unplaceable.Select(u => new { name = u.Base.Name, reason = u.Reason }) }));
         Console.Out.Flush();
         await Task.Run(() => { while (Console.In.ReadLine() is not null) { } });
+        if (SyncMode.Commands is { } commands) await commands.DisposeAsync();
         if (sync is { } s)
         {
             await s.Host.StopAsync();

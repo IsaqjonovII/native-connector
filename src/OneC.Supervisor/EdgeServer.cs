@@ -156,6 +156,9 @@ public sealed class EdgeServer : IAsyncDisposable
             Pipe(c, b, Ops.Catalog, CatalogArgs(name, c.Request.Query)));
         r.MapGet("/v1/bases/{b}/catalogs/{name}/{id}", (string b, string name, string id, HttpContext c) =>
             Pipe(c, b, Ops.Catalog, With(With(new JsonObject(), "catalog", name), "id", id)));
+        // An item AIBA created (Комментарий marker) — local test cleanup; the cloud has no delete command (R9).
+        r.MapDelete("/v1/bases/{b}/catalogs/{name}/{id}", (string b, string name, string id, HttpContext c) =>
+            Pipe(c, b, Ops.CatalogDelete, With(With(new JsonObject(), "catalog", name), "ref", id)));
 
         // The change feed (D36): read by the supervisor itself from the base's event-log files.
         r.MapGet("/v1/bases/{b}/changes", async (string b, string? cursor, long? maxBytes, HttpContext c) =>

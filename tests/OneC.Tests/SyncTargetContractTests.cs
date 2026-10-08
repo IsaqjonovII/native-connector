@@ -110,8 +110,8 @@ public sealed class SyncTargetContractTests
     {
         var t = new StubSyncTarget(StubMode.V3);
         t.Seed("p", "Acc", "d#1", "{\"sum\":10}", 1); t.Seed("p", "Acc", "d#2", "{\"sum\":20}", 1);
-        var repost = new RecorderSync(B(), "p", "d", 7, "Doc", Row("d", "{\"posted\":true}"),
-            new[] { new MovementSet("Acc", new[] { Row("d#1", "{\"sum\":15}") }), new MovementSet("Acc2", Array.Empty<SyncRow>()) });
+        var repost = new RecorderSync(B(), "d", 7, "Doc", "p", Row("d", "{\"posted\":true}"), new[] { "p" }, new[] { "Acc", "Acc2" },
+            new[] { new PartitionMovements("p", "Acc", new[] { Row("d#1", "{\"sum\":15}") }) });
         var r = await t.SyncRecorderAtomicAsync(repost, Ct);
         Assert.Equal((1, 1), (r.MovementsWritten, r.MovementsRemoved));
         Assert.Equal("{\"sum\":15}", t.Rows("p", "Acc")["d#1"]);          // same key, changed amount (F1)
@@ -119,9 +119,38 @@ public sealed class SyncTargetContractTests
         var stale = await t.SyncRecorderAtomicAsync(repost with { BatchId = B(), SourceVersion = 6, Document = Row("d", "{\"posted\":false}") }, Ct);
         Assert.True(stale.StaleDocument);
         Assert.Equal("{\"posted\":true}", t.Rows("p", "Doc")["d"]);
-        var gone = await t.SyncRecorderAtomicAsync(new RecorderSync(B(), "p", "d", 8, "Doc", null, new[] { new MovementSet("Acc", Array.Empty<SyncRow>()) }), Ct);
+        var gone = await t.SyncRecorderAtomicAsync(new RecorderSync(B(), "d", 8, "Doc", null, null, new[] { "p" }, new[] { "Acc" },
+            Array.Empty<PartitionMovements>()), Ct);
         Assert.Equal(1, gone.MovementsRemoved);
         Assert.Equal(0, t.Count("p", "Doc") + t.Count("p", "Acc"));
+    }
+
+    [Fact]
+    public async Task V3AtomicRecorderMovesADocumentBetweenOrganisationsInOneCall()
+    {
+        var t = new StubSyncTarget(StubMode.V3);
+        t.Seed("orgA", "Doc", "d", "{\"org\":\"a\"}", 1); t.Seed("orgA", "Acc", "d#1", "{}", 1);
+        t.Seed("orgA", "Acc", "x#1", "{}", 1);                                 // another recorder: never touched
+        var moved = new RecorderSync(B(), "d", 2, "Doc", "orgB", Row("d", "{\"org\":\"b\"}"), new[] { "orgA", "orgB", "shared" }, new[] { "Acc" },
+            new[] { new PartitionMovements("orgB", "Acc", new[] { Row("d#1", "{}"), Row("d#2", "{}") }) });
+        var r = await t.SyncRecorderAtomicAsync(moved, Ct);
+        Assert.True(r.Ok);
+        Assert.Equal(new[] { "x#1" }, t.Rows("orgA", "Acc").Keys);
+        Assert.False(t.Rows("orgA", "Doc").ContainsKey("d"));
+        Assert.Equal(2, t.Count("orgB", "Acc"));
+        Assert.Equal("{\"org\":\"b\"}", t.Rows("orgB", "Doc")["d"]);
+    }
+
+    [Fact]
+    public async Task V3AtomicRecorderRefusesRowsOutsideItsScope()
+    {
+        var t = new StubSyncTarget(StubMode.V3);
+        var outside = new RecorderSync(B(), "d", 1, "Doc", "p", null, new[] { "p" }, new[] { "Acc" },
+            new[] { new PartitionMovements("q", "Acc", new[] { Row("d#1", "{}") }) });
+        Assert.Equal(Outcome.Validation, (await t.SyncRecorderAtomicAsync(outside, Ct)).Outcome);
+        var foreignKey = outside with { Movements = new[] { new PartitionMovements("p", "Acc", new[] { Row("e#1", "{}") }) } };
+        Assert.Equal(Outcome.Validation, (await t.SyncRecorderAtomicAsync(foreignKey, Ct)).Outcome);
+        Assert.Equal(0, t.Count("q", "Acc") + t.Count("p", "Acc"));
     }
 
     [Fact]
@@ -130,7 +159,7 @@ public sealed class SyncTargetContractTests
         var t = new StubSyncTarget(StubMode.V2);
         Assert.False(t.Capabilities.AtomicRecorder);
         await Assert.ThrowsAsync<NotSupportedException>(() =>
-            t.SyncRecorderAtomicAsync(new RecorderSync(B(), "p", "d", 1, "Doc", null, Array.Empty<MovementSet>()), Ct));
+            t.SyncRecorderAtomicAsync(new RecorderSync(B(), "d", 1, "Doc", null, null, new[] { "p" }, Array.Empty<string>(), Array.Empty<PartitionMovements>()), Ct));
     }
 
     [Theory, InlineData(StubMode.V2), InlineData(StubMode.V3)]

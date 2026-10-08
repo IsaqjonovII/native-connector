@@ -1,0 +1,12 @@
+kansler → Rust connection 30: 3 partition(s), 2 org binding(s)
+1C read in 19,3 s
+backend read: 34145 stored rows in 9,4 s
+OK   ChartOfAccounts_Хозрасчетный: 1C count 432, canonical 432 (sent 432), backend 432 [31 0, 32 0, shared 432]; missing 0, stale/extra 0, wrong partition 0, wrong content 0, duplicate keys 0
+OK   Catalog_Организации: 1C count 2, canonical 2 (sent 2), backend 2 [31 0, 32 0, shared 2]; missing 0, stale/extra 0, wrong partition 0, wrong content 0, duplicate keys 0
+OK   Catalog_Банки: 1C count 500, canonical 500 (sent 500), backend 500 [31 0, 32 0, shared 500]; missing 0, stale/extra 0, wrong partition 0, wrong content 0, duplicate keys 0
+OK   Document_РеализацияТоваровУслуг: 1C count 752 (whole register; window from 2026-06-01), canonical 752 (sent 752), backend 752 [31 748, 32 4, shared 0]; missing 0, stale/extra 0, wrong partition 0, wrong content 0, duplicate keys 0
+OK   Document_ПоступлениеТоваровУслуг: 1C count 617 (whole register; window from 2026-06-01), canonical 617 (sent 617), backend 617 [31 617, 32 0, shared 0]; missing 0, stale/extra 0, wrong partition 0, wrong content 0, duplicate keys 0
+OK   Document_ПлатежноеПоручениеИсходящее: 1C count 314 (whole register; window from 2026-06-01), canonical 314 (sent 314), backend 314 [31 311, 32 3, shared 0]; missing 0, stale/extra 0, wrong partition 0, wrong content 0, duplicate keys 0
+OK   AccountingRegister_Хозрасчетный_RecordType: 1C count 3041863 (whole register; window from 2026-06-01), canonical 27141 (sent 27141), backend 27141 [31 27140, 32 1, shared 0]; missing 0, stale/extra 0, wrong partition 0, wrong content 0, duplicate keys 0
+OK   InformationRegister_КурсыВалют: 1C count 4387, canonical 4387 (sent 4387), backend 4387 [31 0, 32 0, shared 4387]; missing 0, stale/extra 0, wrong partition 0, wrong content 0, duplicate keys 0
+PASS: the Rust backend holds exactly the canonical 1C rows

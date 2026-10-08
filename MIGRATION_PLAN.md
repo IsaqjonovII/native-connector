@@ -28,6 +28,29 @@ preserve, expand, replace or drop; the audit's §18 lists what needs a second, d
 (public reachability of the unauthenticated connector hub, `_postCreateMethod` / `hard:true` use,
 HR `exchange=true` postings, the bank-signer relay). No new architecture until that review.
 
+**State 2026-10-07:** second pass done (`OLD_CONNECTOR_SECOND_PASS.md`). `CONTROL_PLANE_DESIGN.md`
+is **PARKED / FUTURE PHASE** (developer, 2026-10-07): none of P-1 … P-12 is approved, blocks C0–C9
+are not scheduled. `cloud-os` is not part of the future architecture; its code is historical
+evidence of old caller behaviour only.
+
+## Roadmap order (developer, 2026-10-07)
+
+1. **Normal Sync completely right** (catalogs, documents, registers, recorder movements, deletes,
+   multi-org, coverage, counts).
+2. **Normal read / write / post right** (create, update, post, unpost, mark-delete, catalog create,
+   catalog compare-and-set update).
+3. **Rust onec backend** becomes the backend the Connector is built for
+   (`next-modules/onec`); Python `backend/1c` stays a temporary compatibility / reference target
+   behind `IBackendSyncTarget`. Rust is proven against **1C**, not against Python. See
+   `RUST_ONEC_BACKEND_AUDIT.md`, `RUST_SYNC_CONTRACT.md`, `PYTHON_TO_RUST_MIGRATION_PLAN.md`.
+4. Python deprecation, after Rust passes the 1C comparison on the test bases.
+   **State 2026-10-07 (end of day):** steps 3–4 proven locally — Rust matches 1C on bilim (8 tables,
+   full document lifecycle) and real multi-org KAN; coverage now reported by the engine; crash/replay
+   proven. Next: R7 security items, then the developer's go for writes (R9) and per-base cut-over (R10).
+5. **Only after that:** Sync Table Manifest, modules, configurable/adaptive sync policy,
+   presence/fleet, remote data explorer, remote diagnostics, low-level maintenance jobs
+   (`CONTROL_PLANE_DESIGN.md`, parked).
+
 ## Where the plan stood (2026-09-25)
 
 Every approved milestone is built and verified (MIGRATION_STATUS, final pass 2026-09-25).

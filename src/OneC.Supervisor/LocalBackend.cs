@@ -21,10 +21,14 @@ internal static class LocalBackend
         public Task<bool> RefreshAsync(CancellationToken ct) => Task.FromResult(false);
     }
 
-    public static async Task<(PythonMongoSyncTarget Target, string ConnectionId)> ConnectAsync(string url, string secretsFile, string baseName)
+    /// <param name="connectionId">An existing record on that instance to sync into (R10 keeps one per base); null = create a new one.</param>
+    public static async Task<(PythonMongoSyncTarget Target, string ConnectionId)> ConnectAsync(string url, string secretsFile, string baseName,
+                                                                                               string? connectionId = null)
     {
         var s = JsonNode.Parse(await File.ReadAllTextAsync(secretsFile))!;
         var http = new HttpClient { BaseAddress = new Uri(url.TrimEnd('/') + "/"), Timeout = TimeSpan.FromMinutes(5) };
+        if (connectionId is { Length: 24 })
+            return (new PythonMongoSyncTarget(http, new StaticToken(Mint((string)s["jwt"]!)), connectionId), connectionId);
         using var req = new HttpRequestMessage(HttpMethod.Post, "api/v2/onec")
         {
             Content = JsonContent.Create(new
@@ -39,6 +43,14 @@ internal static class LocalBackend
         if (!resp.IsSuccessStatusCode) throw new InvalidOperationException($"create connection: {(int)resp.StatusCode} {text}");
         string id = (string)JsonNode.Parse(text)!["id"]!;
         return (new PythonMongoSyncTarget(http, new StaticToken(Mint((string)s["jwt"]!)), id), id);
+    }
+
+    /// <summary>A client and a test token for reading the isolated instance back (sync-verify, R10).</summary>
+    public static (HttpClient Http, string Token) Reader(string url, string secretsFile)
+    {
+        if (!new Uri(url).IsLoopback) throw new ArgumentException("local backend/1c reads are loopback only");
+        var s = JsonNode.Parse(File.ReadAllText(secretsFile))!;
+        return (new HttpClient { BaseAddress = new Uri(url.TrimEnd('/') + "/"), Timeout = TimeSpan.FromMinutes(5) }, Mint((string)s["jwt"]!));
     }
 
     private static string Mint(string secret)

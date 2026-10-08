@@ -1,0 +1,7 @@
+AIBA_REWRITE_S12_ documents left: 0
+created ПоступлениеТоваровУслуг 0000-000001 ref 4fa391c0-c24b-11f1-b4e8-b42e998ffa17 (AIBA_REWRITE_S12_1007171056)
+1C now: ПоступлениеТоваровУслуг 4fa391c0-c24b-11f1-b4e8-b42e998ffa17 posted=False; Хозрасчетный lines 0, sum 0
+deleted leftover 4fa391c0-c24b-11f1-b4e8-b42e998ffa17
+AIBA_REWRITE_S12_ documents left: 0
+created ПоступлениеТоваровУслуг 0000-000001 ref 76425291-c257-11f1-b4e8-b42e998ffa17 (AIBA_REWRITE_S12_1007185446)
+1C now: ПоступлениеТоваровУслуг 76425291-c257-11f1-b4e8-b42e998ffa17 posted=False; Хозрасчетный lines 0, sum 0

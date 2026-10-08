@@ -1,0 +1,4 @@
+17:10:55 step 1 create
+18:11:53   picked up after 2088.9 s
+18:11:59   idle after 0.2 s
+18:11:59   Rust rows of 4fa391c0-c24b-11f1-b4e8-b42e998ffa17 : Document_ПоступлениеТоваровУслуг 1

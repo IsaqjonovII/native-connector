@@ -1,0 +1,20 @@
+12:32:30 === R9 catalogs AIBA_REWRITE_R9C_1008123230
+12:38:00   command catalog.create [r9c-create-1008123230]: state succeeded result {"code":"00-00000016","created":true,"id":"2d3fa302-c2eb-11f1-b4e8-b42e998ffa17","idempotent":false,"name":"AIBA test item 1008123230","sessionId":1} error 
+12:38:19   Sync brought it into Rust after 19.1 s; Rust: (gone)
+12:40:09   verify r9c-create PASS (Rust = 1C)
+12:40:11   command catalog.create [r9c-create2-1008123230]: state succeeded result {"code":"00-00000016","created":false,"id":"2d3fa302-c2eb-11f1-b4e8-b42e998ffa17","idempotent":true,"name":"AIBA test item 1008123230","sessionId":1} error 
+12:40:11   idempotent: a new key with the same marker returned the same item
+12:40:11 --- compare-and-set
+12:40:13   command catalog.update [r9c-cas-1008123230]: state succeeded result {"code":"00-00000016","created":false,"id":"2d3fa302-c2eb-11f1-b4e8-b42e998ffa17","idempotent":false,"name":"AIBA test item 1008123230 (renamed)","sessionId":1} error 
+12:40:14   Sync brought it into Rust after 0.3 s; Rust: (gone)
+12:40:27   verify r9c-cas PASS (Rust = 1C)
+12:40:27 --- a stale compare-and-set is refused and changes nothing
+12:40:29   command catalog.update [r9c-stale-1008123230]: state failed result null error unprocessable/Host: compare-and-set refused: 1 field(s) differ from what the caller expected; nothing written null
+12:40:31   command catalog.update [r9c-foreign-1008123230]: state failed result null error forbidden/Host: refused: Справочник.Номенклатура 1bb4fb81-21a1-11f0-bbbe-00155de37007 was not created by AIBA (comment does not start with 'AIBA_') null
+12:40:33   command catalog.create [r9c-bank-1008123230]: state failed result null error unprocessable/Host: Справочник.Банки has no Комментарий: AIBA cannot mark an item there as its own null
+12:40:43   refusals returned with 1C/host reasons; nothing changed
+12:40:43 --- cleanup (owned delete through the local edge)
+12:41:12   1C: {"id":"2d3fa302-c2eb-11f1-b4e8-b42e998ffa17","deleted":true}
+12:41:14   Sync brought it into Rust after 2.3 s; Rust: (gone)
+12:41:19   verify r9c-cleanup PASS (Rust = 1C)
+12:41:19 R9 catalogs PASS

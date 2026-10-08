@@ -62,6 +62,7 @@ public sealed class BaseSyncAgent : IBaseAgent
             if (router.MultiOrg) OrgRouter.Validate(config, _plan.Tables);
             var parts = BuildParts(caps, router);
             await CatchUpNewlyBoundAsync(router, a);
+            await FlushCoverageAsync(router, a.Stop);
 
             string mode = Recovery.StartMode(_db, _plan.BaseId, _plan.LogDir is not null);
             switch (mode)
@@ -69,7 +70,7 @@ public sealed class BaseSyncAgent : IBaseAgent
                 case SyncModes.Paused:
                     return;
                 case SyncModes.Snapshot:
-                    await SnapshotAsync(a, parts);
+                    await SnapshotAsync(a, parts, router);
                     break;
                 case SyncModes.Recovery when _plan.LogDir is not null:
                 {
@@ -176,7 +177,61 @@ public sealed class BaseSyncAgent : IBaseAgent
     public static string SnapshotDoneKey(string baseId, string table) => $"snapshot_done:{baseId}:{table}";
     public static string MissingTableKey(string baseId, string table) => $"table_missing:{baseId}:{table}";
 
-    private async Task SnapshotAsync(BaseActivation a, Parts parts)
+    public static string CoveragePendingKey(string baseId, string table) => $"coverage_pending:{baseId}:{table}";
+
+    /// <summary>
+    /// Data coverage (RUST_SYNC_CONTRACT §4.9) is load-bearing: avtoprovodka reads a table with NO entry as
+    /// "the whole history is here" and treats a miss as absence (sotuv.rs mirror_reach_from_onec) — a
+    /// windowed or half-copied table without an entry invites a duplicate document. So for documents and
+    /// registers: "loading" (unknown reach) must be stored before the first row goes out, and the final
+    /// reach after the snapshot completes. Catalogs and charts are never listed (they load whole).
+    /// </summary>
+    private static bool Covered(TablePlan t) => t.Family == Families.Document || Families.IsRegister(t.Family);
+
+    private IEnumerable<string> CoveragePartitions(TablePlan t, IPartitioner router) => t.IsMovement ? router.All : new[] { router.Shared };
+
+    private static TableCoverage FinalCoverage(TablePlan t) =>
+        t.From is { } from ? new TableCoverage(t.Table, from, false) : new TableCoverage(t.Table, null, true);
+
+    private async Task ReportCoverageAsync(TablePlan t, TableCoverage c, IPartitioner router, CancellationToken ct)
+    {
+        if (_target is not ICoverageTarget cov) return;
+        foreach (var p in CoveragePartitions(t, router))
+        {
+            var r = await cov.ReportCoverageAsync(p, new[] { c }, ct);
+            if (!r.Ok) throw new SyncPausedException(r.Outcome == Outcome.Ok ? Outcome.Transient : r.Outcome, $"coverage {p}/{t.Table}: {r.Outcome} {r.Message}", r.HttpStatus);
+        }
+    }
+
+    public static string CoverageSentKey(string baseId, string table) => $"coverage_sent:{baseId}:{table}";
+
+    private static string Describe(TableCoverage c) => $"{c.Table}|{c.DataFrom:yyyy-MM-dd}|{c.Complete}";
+
+    /// <summary>
+    /// Final reaches not yet stored in the target, sent before anything else in an activation: one a failed
+    /// report left behind, and — for a copied table — one never sent at all or sent for another window. A
+    /// base copied before coverage existed (R10, 2026-10-08: bilim's register, windowed from 2025-08-01, had
+    /// no entry and so read as "whole history") gets its entry this way, without copying again.
+    /// </summary>
+    private async Task FlushCoverageAsync(IPartitioner router, CancellationToken ct)
+    {
+        foreach (var t in _plan.Tables.Where(Covered))
+        {
+            var (pending, done, sent) = _db.Read(tx => (tx.GetMeta(CoveragePendingKey(_plan.BaseId, t.Table)),
+                                                        tx.GetMeta(SnapshotDoneKey(_plan.BaseId, t.Table)),
+                                                        tx.GetMeta(CoverageSentKey(_plan.BaseId, t.Table))));
+            var final = FinalCoverage(t);
+            if (pending is null && (done is null || sent == Describe(final))) continue;
+            await ReportCoverageAsync(t, final, router, ct);
+            _db.Write(tx =>
+            {
+                tx.DeleteMeta(CoveragePendingKey(_plan.BaseId, t.Table));
+                tx.SetMeta(CoverageSentKey(_plan.BaseId, t.Table), Describe(final));
+            });
+        }
+    }
+
+    private async Task SnapshotAsync(BaseActivation a, Parts parts, IPartitioner router)
     {
         if (_plan.LogDir is not null) parts.Feed.Handshake(_plan.BaseId, _plan.LogDir);
         // Reference data first (documents refer to it), then documents, then registers.
@@ -184,6 +239,8 @@ public sealed class BaseSyncAgent : IBaseAgent
         {
             if (Mode() != SyncModes.Snapshot) return;                              // paused (or recovering) meanwhile: stop after this table
             if (_db.Read(tx => tx.GetMeta(SnapshotDoneKey(_plan.BaseId, t.Table))) is not null) continue;
+            // Stored before the first row: a half-copied table must never read as "whole history".
+            if (Covered(t)) await ReportCoverageAsync(t, TableCoverage.Loading(t.Table), router, a.Stop);
             SnapshotResult r;
             try { r = await parts.Snapshot.RunTableAsync(a, t, 1); }
             catch (OneCMetadataMissingException e)
@@ -193,11 +250,26 @@ public sealed class BaseSyncAgent : IBaseAgent
                 {
                     tx.SetMeta(MissingTableKey(_plan.BaseId, t.Table), e.Message);
                     tx.SetMeta(SnapshotDoneKey(_plan.BaseId, t.Table), SyncDb.Iso(tx.Now));
+                    // Its "loading" entry is replaced on the next activation (a table 1C does not have holds nothing to miss).
+                    if (Covered(t)) tx.SetMeta(CoveragePendingKey(_plan.BaseId, t.Table), SyncDb.Iso(tx.Now));
                 });
                 continue;
             }
             if (r.Outcome != SnapshotOutcome.Complete) return;                     // stopped or no session: resume next activation
-            _db.Write(tx => tx.SetMeta(SnapshotDoneKey(_plan.BaseId, t.Table), SyncDb.Iso(tx.Now)));
+            _db.Write(tx =>
+            {
+                tx.SetMeta(SnapshotDoneKey(_plan.BaseId, t.Table), SyncDb.Iso(tx.Now));
+                if (Covered(t)) tx.SetMeta(CoveragePendingKey(_plan.BaseId, t.Table), SyncDb.Iso(tx.Now));
+            });
+            if (Covered(t))
+            {
+                await ReportCoverageAsync(t, FinalCoverage(t), router, a.Stop);   // a failure leaves it pending: next activation sends it
+                _db.Write(tx =>
+                {
+                    tx.DeleteMeta(CoveragePendingKey(_plan.BaseId, t.Table));
+                    tx.SetMeta(CoverageSentKey(_plan.BaseId, t.Table), Describe(FinalCoverage(t)));
+                });
+            }
             // §11: drain the feed between tables so the cursor keeps up with the log during a long first sync.
             if (_plan.LogDir is not null) parts.Feed.Drain(_plan.BaseId, _plan.LogDir, parts.Map, a.Stop);
             // A reset or restore seen by that drain: Recovery takes over (its verify pass also covers

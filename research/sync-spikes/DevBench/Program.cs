@@ -15,6 +15,32 @@ const string Prefix = "AIBA_REWRITE_S12_";
 
 string Arg(string n) => args.SkipWhile(a => a != "--" + n).Skip(1).FirstOrDefault() ?? throw new ArgumentException("--" + n);
 
+// DevBench write-body --bases f.json --base bilim --out body.json: read-only — the newest posted
+// ПоступлениеТоваровУслуг of the local bilim copy as an old-style write body (WritePayload.FromRef,
+// the body the cloud sends), Комментарий left for the caller's AIBA marker. R9's create payload.
+if (args.Length > 0 && args[0] == "write-body")
+{
+    var wb = JsonSerializer.Deserialize<List<OneCBase>>(File.ReadAllText(Arg("bases")))!.First(x => x.Name == Arg("base"));
+    if (!wb.IsFile || !wb.ConnectionString.Contains(@"D:\1C\bilim", StringComparison.OrdinalIgnoreCase))
+    {
+        Console.Error.WriteLine("write-body reads the local bilim copy only");
+        return 1;
+    }
+    var wp = PlatformCatalog.Select(PlatformCatalog.Discover(), wb.PlatformVersion, wb.IsFile)!;
+    using var wm = new SessionManager(wp.ComcntrPath, new PoolOptions { GlobalMaxSessions = 1, PerBaseMaxSessions = 1 });
+    wm.Register(wb);
+    var body = wm.Use(wb.Name, ctx =>
+    {
+        var src = WriteParityScenario.Sources(ctx, Doc, 1, true);
+        if (src.Count == 0) throw new InvalidOperationException("no posted " + Doc);
+        return WritePayload.FromRef(ctx, Doc, src[0]);
+    });
+    body.Remove(DocumentWriteBody.CommentField);
+    File.WriteAllText(Arg("out"), body.ToJsonString(new JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }));
+    Console.WriteLine($"wrote {Arg("out")}: {body.Count} fields");
+    return 0;
+}
+
 // DevBench stress --bases f.json --rounds N [--gc]: the MultiBaseTests pattern (managers created,
 // read through, disposed; sessions evicted) in a loop, read-only, to reproduce the testhost's
 // 0xC0000374 heap corruption outside the test runner. --gc forces collections and finalizers

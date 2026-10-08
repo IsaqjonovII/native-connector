@@ -1,0 +1,38 @@
+=== bilim stall diagnostics, captured 2026-10-07T22:07:35.1859921+05:00 ===
+Lifecycle step 6 mark-deleted (edge POST .../76425291-c257-11f1-b4e8-b42e998ffa17/mark-deleted) sent 19:11:00 local; edge answered 503 Transport after 65 s; lifecycle waited 60 min (until 20:12:03) for Rust to change: FAIL - no change. Every later edge read of bilim also 503 after 65 s.
+--- host process ---
+
+ProcessId       : 50220
+ParentProcessId : 6428
+CreationDate    : 07/10/2026 18:19:05
+CommandLine     : "D:\aiba\1c-arch\src\OneC.Host\bin\Release\net9.0\OneC.Host.exe" serve --pipe aiba-onec-8.3.15.1565-x64-6428-645734bb
+
+
+CPU 19,72 s, WS 123 MB, private 69 MB, threads 10, handles 620
+--- /v1/hosts ---
+[{"key":"8.3.15.1565-x64","state":"Ready","pid":50220,"pipeName":"aiba-onec-8.3.15.1565-x64-6428-645734bb","comcntrVersion":"8.3.15.1565","workingSetMb":122,"privateMb":69,"restarts":0,"bases":["bilim"],"stats":{"workingSetMb":123,"privateMb":70,"managedMb":1,"threads":13,"handles":629,"cpuSeconds":19.71875,"comRefsLive":0,"sessions":0,"inUse":0,"pools":[{"baseName":"bilim","kind":"FILE","live":0,"idle":0,"inUse":0,"created":4,"retired":4,"recycled":0,"evicted":0,"broken":0,"rents":21,"waits":0,"connectRetries":0,"connectFailuresInARow":0}]}}]
+--- /v1/supervisor ---
+{"pid":6428,"workingSetMb":85,"privateMb":28,"threads":17,"handles":458,"cpuSeconds":25.09375,"unplaceable":[]}
+--- /v1/sync ---
+[{"baseId":"bilim","mode":"incremental","reason":"snapshot complete","pendingWork":0,"deadLetters":0,"warning":false,"cursor":"7e88f2ad-c311-4617-ac43-33a1f1d7e3cb|20261007160000.lgp|23108","lastEventAt":"2026-10-07T14:03:09+00:00","active":false,"tablesDone":8,"tablesTotal":8,"missingTables":{},"tables":["ChartOfAccounts_Хозрасчетный","Catalog_Банки","Catalog_Контрагенты","Catalog_Номенклатура","Document_ПоступлениеТоваровУслуг","Document_РеализацияТоваровУслуг","AccountingRegister_Хозрасчетный_RecordType","InformationRegister_КурсыВалют"],"unmappedOrgs":[]}]
+--- /v1/activity (last 10) ---
+[{"utc":"2026-10-07T15:05:26.0905204Z","method":"GET","path":"/v1/bases/bilim/documents/%D0%9F%D0%BE%D1%81%D1%82%D1%83%D0%BF%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5%D0%A2%D0%BE%D0%B2%D0%B0%D1%80%D0%BE%D0%B2%D0%A3%D1%81%D0%BB%D1%83%D0%B3/76425291-c257-11f1-b4e8-b42e998ffa17","base":"bilim","op":"document","status":503,"ms":65003,"errorLayer":"Transport","error":"host 8.3.15.1565-x64 did not answer 'document' within 65s"},{"utc":"2026-10-07T14:33:34.2585252Z","method":"GET","path":"/v1/bases/bilim/documents/%D0%9F%D0%BE%D1%81%D1%82%D1%83%D0%BF%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5%D0%A2%D0%BE%D0%B2%D0%B0%D1%80%D0%BE%D0%B2%D0%A3%D1%81%D0%BB%D1%83%D0%B3/76425291-c257-11f1-b4e8-b42e998ffa17","base":"bilim","op":"document","status":503,"ms":65003,"errorLayer":"Transport","error":"host 8.3.15.1565-x64 did not answer 'document' within 65s"},{"utc":"2026-10-07T14:12:02.5420098Z","method":"POST","path":"/v1/bases/bilim/documents/%D0%9F%D0%BE%D1%81%D1%82%D1%83%D0%BF%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5%D0%A2%D0%BE%D0%B2%D0%B0%D1%80%D0%BE%D0%B2%D0%A3%D1%81%D0%BB%D1%83%D0%B3/76425291-c257-11f1-b4e8-b42e998ffa17/mark-deleted","base":"bilim","op":"markDeleted","status":503,"ms":65008,"errorLayer":"Transport","error":"host 8.3.15.1565-x64 did not answer 'markDeleted' within 65s"},{"utc":"2026-10-07T14:03:09.7898367Z","method":"POST","path":"/v1/bases/bilim/documents/%D0%9F%D0%BE%D1%81%D1%82%D1%83%D0%BF%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5%D0%A2%D0%BE%D0%B2%D0%B0%D1%80%D0%BE%D0%B2%D0%A3%D1%81%D0%BB%D1%83%D0%B3/76425291-c257-11f1-b4e8-b42e998ffa17/post","base":"bilim","op":"post","status":200,"ms":134,"errorLayer":null,"error":null},{"utc":"2026-10-07T14:02:59.0609664Z","method":"POST","path":"/v1/bases/bilim/documents/%D0%9F%D0%BE%D1%81%D1%82%D1%83%D0%BF%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5%D0%A2%D0%BE%D0%B2%D0%B0%D1%80%D0%BE%D0%B2%D0%A3%D1%81%D0%BB%D1%83%D0%B3/76425291-c257-11f1-b4e8-b42e998ffa17/unpost","base":"bilim","op":"unpost","status":200,"ms":68,"errorLayer":null,"error":null},{"utc":"2026-10-07T14:02:50.9085479Z","method":"PUT","path":"/v1/bases/bilim/documents/%D0%9F%D0%BE%D1%81%D1%82%D1%83%D0%BF%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5%D0%A2%D0%BE%D0%B2%D0%B0%D1%80%D0%BE%D0%B2%D0%A3%D1%81%D0%BB%D1%83%D0%B3/76425291-c257-11f1-b4e8-b42e998ffa17","base":"bilim","op":"update","status":200,"ms":657,"errorLayer":null,"error":null},{"utc":"2026-10-07T14:02:34.9558098Z","method":"POST","path":"/v1/bases/bilim/documents/%D0%9F%D0%BE%D1%81%D1%82%D1%83%D0%BF%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5%D0%A2%D0%BE%D0%B2%D0%B0%D1%80%D0%BE%D0%B2%D0%A3%D1%81%D0%BB%D1%83%D0%B3/76425291-c257-11f1-b4e8-b42e998ffa17/post","base":"bilim","op":"post","status":200,"ms":18263,"errorLayer":null,"error":null}]
+--- bilim directory ---
+
+Name                 Length LastWriteTime
+----                 ------ -------------
+1Cv8.1CD         1024393216 07/10/2026 19:03:09
+1Cv8FTxt                  1 07/10/2026 17:36:54
+1Cv8Log                   1 07/10/2026 16:00:53
+1Cv8JobScheduler          1 02/05/2026 13:26:31
+1Cv8IntegSrvc             1 02/05/2026 13:19:32
+1Cv8tmp.1CL.cfl           0 02/05/2026 13:18:15
+1Cv8tmp.1CD.cfl           0 02/05/2026 13:18:15
+1Cv8.1CL.cfl              0 02/05/2026 13:18:15
+1Cv8.1CD.cfl              0 02/05/2026 13:18:12
+1Cv8.cgr.cfl              0 02/05/2026 13:18:12
+
+
+--- other 1C processes ---
+
+--- restart: host 50220 killed 22:07:46 by request; Supervisor restarted it as pid 41296 (restarts 1)

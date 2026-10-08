@@ -33,6 +33,12 @@ public static class Ops
     public const string Unpost = "unpost";
     public const string MarkDeleted = "markDeleted";
     public const string Delete = "delete";
+    /// <summary>R9: a catalog item AIBA owns (Комментарий marker), idempotent by marker.</summary>
+    public const string CatalogCreate = "catalogCreate";
+    /// <summary>R9: compare-and-set update of an item AIBA owns: <c>catalog, ref, expected{}, set{}</c>.</summary>
+    public const string CatalogUpdate = "catalogUpdate";
+    /// <summary>Owned item delete — local edge only (test cleanup), never a cloud command.</summary>
+    public const string CatalogDelete = "catalogDelete";
     public const string FindOwned = "findOwned";
     public const string Sweep = "sweep";
     public const string Cancel = "cancel";

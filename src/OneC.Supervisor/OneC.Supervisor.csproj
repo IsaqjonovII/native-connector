@@ -27,6 +27,7 @@
     <ProjectReference Include="..\OneC.Sync\OneC.Sync.csproj" />
     <ProjectReference Include="..\OneC.Sync.Stub\OneC.Sync.Stub.csproj" />
     <ProjectReference Include="..\OneC.Sync.Targets.Python\OneC.Sync.Targets.Python.csproj" />
+    <ProjectReference Include="..\OneC.Sync.Targets.Rust\OneC.Sync.Targets.Rust.csproj" />
     <ProjectReference Include="..\OneC.Cloud\OneC.Cloud.csproj" />
   </ItemGroup>
 </Project>

@@ -66,7 +66,7 @@ public static class WriteSchemas
         return new WriteSchema(document, MetadataShapes.Length(ctx, meta, "ДлинаНомера") > 0, attributes, tabular);
     }
 
-    private static Dictionary<string, FieldType> Fields(SessionContext ctx, ComScope scope, object owner)
+    internal static Dictionary<string, FieldType> Fields(SessionContext ctx, ComScope scope, object owner)
     {
         var map = new Dictionary<string, FieldType>(StringComparer.Ordinal);
         var attrs = scope.Track(Dispatch.Get(owner, "Реквизиты", ctx.Error), "Реквизиты");

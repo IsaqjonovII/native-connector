@@ -16,11 +16,23 @@ public sealed record DeleteBatch(string BatchId, string PartitionId, string Tabl
 /// <param name="LiveKeys">The complete current set of the recorder's row keys in this table (empty = remove all).</param>
 public sealed record RecorderReconcile(string BatchId, string PartitionId, string Table, string RecorderKey, IReadOnlyList<string> LiveKeys);
 
-public sealed record MovementSet(string Table, IReadOnlyList<SyncRow> Rows);
+/// <summary>The recorder's current rows in one register of one partition.</summary>
+public sealed record PartitionMovements(string PartitionId, string Table, IReadOnlyList<SyncRow> Rows);
 
-/// <param name="Document">Null when the document itself is gone (then all movements are removed).</param>
-public sealed record RecorderSync(string BatchId, string PartitionId, string RecorderKey, long? SourceVersion,
-                                  string DocumentTable, SyncRow? Document, IReadOnlyList<MovementSet> Movements);
+/// <summary>
+/// One document and all its movements, every partition and register at once (RUST_SYNC_CONTRACT §4.5,
+/// §7): the target upserts the document in <c>DocumentPartition</c> and removes it from the other
+/// partitions, upserts the movements, and removes the recorder's rows that are not live — in exactly
+/// <c>Partitions × MovementTables</c>, nowhere else — in one transaction.
+/// </summary>
+/// <param name="DocumentTable">Empty when the document's own table is not synced (then <c>Document</c> is null and no document row is touched).</param>
+/// <param name="Document">Null when the document is gone or not synced: it is removed from every partition in scope.</param>
+/// <param name="Partitions">Reconcile scope: where the recorder has or had rows (the engine's touch set).</param>
+/// <param name="MovementTables">Reconcile scope: every configured register the recorder may post to.</param>
+public sealed record RecorderSync(string BatchId, string RecorderKey, long? SourceVersion,
+                                  string DocumentTable, string? DocumentPartition, SyncRow? Document,
+                                  IReadOnlyList<string> Partitions, IReadOnlyList<string> MovementTables,
+                                  IReadOnlyList<PartitionMovements> Movements);
 
 public sealed record SyncPartition(string PartitionId, string? OrgRef, string? CompanyId);
 
@@ -34,6 +46,24 @@ public sealed record SyncConfig(string ConnectionId, string? Provider, string Sh
     /// <summary>False: the backend keeps no table list for this connection (backend/1c answers
     /// <c>tables: null</c> until one is stored) — <see cref="Tables"/> is then empty, not "none allowed".</summary>
     public bool TableListStored { get; init; } = true;
+}
+
+/// <summary>
+/// How far back a partition's copy of one table reaches (RUST_SYNC_CONTRACT §4.9), in the meaning its
+/// consumer reads (aiba-next sotuv.rs <c>mirror_reach_from_onec</c>, backend/1c coverage.py): no entry =
+/// whole history; <c>Complete</c> = whole history; not complete with <c>DataFrom</c> = rows from that day
+/// on only; not complete without <c>DataFrom</c> = unknown (every miss doubted).
+/// </summary>
+public sealed record TableCoverage(string Table, DateTime? DataFrom, bool Complete)
+{
+    /// <summary>A first copy in progress: nothing may be read as absent yet.</summary>
+    public static TableCoverage Loading(string table) => new(table, null, false);
+}
+
+/// <summary>A target that stores data coverage. The engine reports it for every document and register table it copies.</summary>
+public interface ICoverageTarget
+{
+    Task<TargetResult> ReportCoverageAsync(string partitionId, IReadOnlyList<TableCoverage> tables, CancellationToken ct);
 }
 
 public sealed record BaseStatus(string ConnectionId, string State, long? TotalCount, int? Percentage, string? LastError);
@@ -76,6 +106,7 @@ public sealed record DeleteResult(Outcome Outcome, int Deleted, int? HttpStatus 
 public sealed record ReconcileResult(Outcome Outcome, int Removed, int? HttpStatus = null, string? Message = null)
     : TargetResult(Outcome, HttpStatus, Message);
 
+/// <param name="MovementsWritten">Rows inserted or changed (an unchanged row is not counted).</param>
 public sealed record RecorderSyncResult(Outcome Outcome, bool StaleDocument, int MovementsWritten, int MovementsRemoved,
                                         int? HttpStatus = null, string? Message = null)
     : TargetResult(Outcome, HttpStatus, Message);

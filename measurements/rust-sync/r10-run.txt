@@ -1,0 +1,22 @@
+12:47:20 === R10 per-base switch (local only)
+12:47:20 --- A: bilim on Rust (binding recorded)
+13:02:52 === R10 per-base switch (local only)
+13:02:52 --- A: bilim on Rust (binding recorded)
+13:02:56   binding: rust:http://127.0.0.1:18112|13
+13:02:56 --- B: the other backend without "switch" is refused
+13:02:58   refused: supervisor exited (-532462766): Unhandled exception. OneC.Supervisor.TargetBinding+RefusedException: bilim syncs into rust:http://127.0.0.1:18112|13 (since 2026-10-08 07:47); this run names http://127.0.0.1:18041|6ac74a64b615f076549ab133. One backend per base: moving it needs "switch": true (R10).
+13:02:58 --- C: explicit switch to the isolated backend/1c
+13:03:29   first copy into backend/1c done in 28.1 s
+13:03:35   verify r10-python-after-switch PASS (backend/1c = 1C)
+13:03:35 --- D: a 1C change while bilim is on Python
+13:03:50   created + posted c7e1d688-c2ee-11f1-b4e8-b42e998ffa17 in 1C
+13:04:15   verify r10-python-after-change PASS (backend/1c has the change)
+13:04:15   Rust untouched while on Python: 2000 rows, last write 2026-10-07 16:13:20.840398+05
+13:04:15 --- E: rollback to Rust
+13:04:22   Rust caught up the change made on Python after 4.3 s: 
+13:04:28   verify r10-rust-after-rollback PASS (Rust = 1C)
+13:04:28   Rust coverage: 
+13:04:28 --- F: cleanup
+13:05:23   verify r10-rust-after-cleanup PASS
+13:05:23   binding now: {"active":{"identity":"rust:http://127.0.0.1:18112|13","db":"C:\\Users\\Sanjar Barakayev\\AppData\\Local\\AIBA-rust-sync-test\\sync\\sync-bilim.db","since":"2026-10-08T13:04:15.8973283+05:00"},"previous":{"identity":"http://127.0.0.1:18041|6ac74a64b615f076549ab133","db":"C:\\Users\\Sanjar Barakayev\\AppData\\Local\\AIBA-rust-sync-test\\sync\\sync-bilim-python.db","since":"2026-10-08T13:02:59.1096175+05:00"}}
+13:05:23 R10 PASS

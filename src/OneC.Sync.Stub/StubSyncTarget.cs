@@ -21,8 +21,27 @@ public enum StubMode
 /// (partition, table, key), records every call, replays a repeated <c>BatchId</c>, and can be told to
 /// fail, go offline, throttle, or report the connection as deleting. Thread-safe.
 /// </summary>
-public sealed class StubSyncTarget : IBackendSyncTarget
+public sealed class StubSyncTarget : IBackendSyncTarget, ICoverageTarget
 {
+    private readonly Dictionary<(string Partition, string Table), TableCoverage> _coverage = new();
+
+    /// <summary>Stored coverage of one table in one partition (merged per table, like the backends).</summary>
+    public TableCoverage? Coverage(string partition, string table)
+    {
+        lock (_gate) return _coverage.GetValueOrDefault((partition, table));
+    }
+
+    public Task<TargetResult> ReportCoverageAsync(string partitionId, IReadOnlyList<TableCoverage> tables, CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            _calls.Add($"coverage {partitionId} {string.Join(",", tables.Select(t => $"{t.Table}:{(t.Complete ? "complete" : t.DataFrom?.ToString("yyyy-MM-dd") ?? "loading")}"))}");
+            if (Precheck("coverage") is { } f) return Task.FromResult(f);
+            foreach (var t in tables) _coverage[(partitionId, t.Table)] = t;
+            return Task.FromResult(TargetResult.Success);
+        }
+    }
+
     private sealed record Stored(byte[] Json, long? SourceVersion);
 
     private readonly Lock _gate = new();
@@ -229,22 +248,38 @@ public sealed class StubSyncTarget : IBackendSyncTarget
         if (!Capabilities.AtomicRecorder) throw new NotSupportedException("this target has no atomic recorder sync");
         lock (_gate)
         {
-            _calls.Add($"recorder {s.PartitionId} {s.RecorderKey} movements={s.Movements.Sum(m => m.Rows.Count)}");
+            _calls.Add($"recorder {string.Join(",", s.Partitions)} {s.RecorderKey} movements={s.Movements.Sum(m => m.Rows.Count)}");
             if (Precheck("recorder") is { } f) return Task.FromResult(new RecorderSyncResult(f.Outcome, false, 0, 0, f.HttpStatus, f.Message));
             if (_batches.TryGetValue(s.BatchId, out var done)) return Task.FromResult((RecorderSyncResult)done);
-            var docs = Table(s.PartitionId, s.DocumentTable);
-            if (docs.TryGetValue(s.RecorderKey, out var old) && IsStale(old.SourceVersion, s.SourceVersion))
+            // Scope (contract §4.5): everything named must lie inside Partitions × MovementTables.
+            if ((s.Document is not null && (s.DocumentPartition is null || !s.Partitions.Contains(s.DocumentPartition)))
+                || s.Movements.Any(m => !s.Partitions.Contains(m.PartitionId) || !s.MovementTables.Contains(m.Table)
+                                        || m.Rows.Any(r => !r.Key.StartsWith(s.RecorderKey + "#", StringComparison.Ordinal))))
+                return Task.FromResult(new RecorderSyncResult(Outcome.Validation, false, 0, 0, 400, "out_of_scope"));
+            bool hasDoc = s.DocumentTable.Length > 0;
+            if (hasDoc && s.Partitions.Any(p => Table(p, s.DocumentTable).TryGetValue(s.RecorderKey, out var old) && IsStale(old.SourceVersion, s.SourceVersion)))
                 return Task.FromResult(new RecorderSyncResult(Outcome.Ok, true, 0, 0));
             // All in one step under the lock: nobody observes the document without its movements.
-            if (s.Document is null) docs.Remove(s.RecorderKey);
-            else docs[s.RecorderKey] = new Stored(s.Document.Json, s.SourceVersion);
+            if (hasDoc)
+                foreach (var p in s.Partitions)
+                {
+                    var docs = Table(p, s.DocumentTable);
+                    if (s.Document is not null && p == s.DocumentPartition) docs[s.RecorderKey] = new Stored(s.Document.Json, s.SourceVersion);
+                    else docs.Remove(s.RecorderKey);
+                }
             int written = 0, removed = 0;
-            foreach (var m in s.Movements)
-            {
-                var t = Table(s.PartitionId, m.Table);
-                removed += RemoveStale(t, s.RecorderKey, m.Rows.Select(r => r.Key).ToList());
-                foreach (var r in m.Rows) { t[r.Key] = new Stored(Keep(r.Json), s.SourceVersion); written++; }
-            }
+            foreach (var p in s.Partitions)
+                foreach (var table in s.MovementTables)
+                {
+                    var rows = s.Movements.Where(m => m.PartitionId == p && m.Table == table).SelectMany(m => m.Rows).ToList();
+                    var t = Table(p, table);
+                    removed += RemoveStale(t, s.RecorderKey, rows.Select(r => r.Key).ToList());
+                    foreach (var r in rows)
+                    {
+                        if (!t.TryGetValue(r.Key, out var was) || !was.Json.AsSpan().SequenceEqual(r.Json)) written++;
+                        t[r.Key] = new Stored(Keep(r.Json), s.SourceVersion);
+                    }
+                }
             var result = new RecorderSyncResult(Outcome.Ok, false, written, removed);
             Remember(s.BatchId, result);
             return Task.FromResult(result);

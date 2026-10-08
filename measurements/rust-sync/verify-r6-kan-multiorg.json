@@ -1,0 +1,113 @@
+{
+  "at": "2026-10-07T17:14:24.0032753Z",
+  "base": "kansler",
+  "connection": "30",
+  "pass": true,
+  "tables": [
+    {
+      "table": "ChartOfAccounts_Хозрасчетный",
+      "oneCCount": 432,
+      "canonical": 432,
+      "sent": 432,
+      "backend": 432,
+      "missing": 0,
+      "extra": 0,
+      "wrongPartition": 0,
+      "wrongContent": 0,
+      "duplicateKeys": 0,
+      "examples": []
+    },
+    {
+      "table": "Catalog_Организации",
+      "oneCCount": 2,
+      "canonical": 2,
+      "sent": 2,
+      "backend": 2,
+      "missing": 0,
+      "extra": 0,
+      "wrongPartition": 0,
+      "wrongContent": 0,
+      "duplicateKeys": 0,
+      "examples": []
+    },
+    {
+      "table": "Catalog_Банки",
+      "oneCCount": 500,
+      "canonical": 500,
+      "sent": 500,
+      "backend": 500,
+      "missing": 0,
+      "extra": 0,
+      "wrongPartition": 0,
+      "wrongContent": 0,
+      "duplicateKeys": 0,
+      "examples": []
+    },
+    {
+      "table": "Document_РеализацияТоваровУслуг",
+      "oneCCount": 752,
+      "canonical": 752,
+      "sent": 752,
+      "backend": 752,
+      "missing": 0,
+      "extra": 0,
+      "wrongPartition": 0,
+      "wrongContent": 0,
+      "duplicateKeys": 0,
+      "examples": []
+    },
+    {
+      "table": "Document_ПоступлениеТоваровУслуг",
+      "oneCCount": 617,
+      "canonical": 617,
+      "sent": 617,
+      "backend": 617,
+      "missing": 0,
+      "extra": 0,
+      "wrongPartition": 0,
+      "wrongContent": 0,
+      "duplicateKeys": 0,
+      "examples": []
+    },
+    {
+      "table": "Document_ПлатежноеПоручениеИсходящее",
+      "oneCCount": 314,
+      "canonical": 314,
+      "sent": 314,
+      "backend": 314,
+      "missing": 0,
+      "extra": 0,
+      "wrongPartition": 0,
+      "wrongContent": 0,
+      "duplicateKeys": 0,
+      "examples": []
+    },
+    {
+      "table": "AccountingRegister_Хозрасчетный_RecordType",
+      "oneCCount": 3041863,
+      "canonical": 27141,
+      "sent": 27141,
+      "backend": 27141,
+      "missing": 0,
+      "extra": 0,
+      "wrongPartition": 0,
+      "wrongContent": 0,
+      "duplicateKeys": 0,
+      "examples": []
+    },
+    {
+      "table": "InformationRegister_КурсыВалют",
+      "oneCCount": 4387,
+      "canonical": 4387,
+      "sent": 4387,
+      "backend": 4387,
+      "missing": 0,
+      "extra": 0,
+      "wrongPartition": 0,
+      "wrongContent": 0,
+      "duplicateKeys": 0,
+      "examples": []
+    }
+  ],
+  "unmapped": []
+}

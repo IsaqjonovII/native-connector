@@ -32,23 +32,46 @@ internal static class SyncVerify
     public static async Task<int> Run(List<OneCBase> bases, SupervisorOptions opt, string configPath, string? reportPath)
     {
         var cfg = JsonNode.Parse(await File.ReadAllTextAsync(configPath))!.AsObject();
-        if ((string?)cfg["target"] != "dev") { Console.Error.WriteLine("sync-verify reads the dev backend: target must be \"dev\""); return 1; }
+        string targetSpec = (string?)cfg["target"] ?? "";
+        bool rust = targetSpec.StartsWith(RustBackend.Scheme, StringComparison.Ordinal);
+        bool local = !rust && targetSpec != "dev" && Uri.TryCreate(targetSpec, UriKind.Absolute, out var lu) && lu.IsLoopback;   // isolated backend/1c (R10)
+        if (targetSpec != "dev" && !rust && !local) { Console.Error.WriteLine("sync-verify reads the dev backend, the local Rust module or the isolated local backend/1c: target must be \"dev\", \"rust:<loopback URL>\" or a loopback URL"); return 1; }
         var b = cfg["bases"]!.AsArray().OfType<JsonObject>().Single();
         string baseName = (string)b["name"]!, conn = (string)b["connectionId"]!;
         var plans = SyncMode.Tables(b);                                       // the engine's own plan, same names and routing
         var ob = bases.First(x => x.Name == baseName);
 
-        var (dev, http, cloud) = DevBackend.Connect((string)cfg["session"]!, conn, new HttpFaults());
-        var record = await DevBackend.GetJsonAsync(http, cloud, $"api/v2/onec/{Uri.EscapeDataString(conn)}");
-        if (!((string?)record["name"] ?? "").StartsWith(DevBackend.TestPrefix, StringComparison.Ordinal))
+        OneC.Sync.Targets.Rust.RustSyncTarget? rustTarget = null;
+        HttpClient http;
+        OneC.Cloud.CloudClient? cloud = null;
+        OneC.Sync.Abstractions.SyncConfig config;
+        string? localToken = null;
+        if (rust)
         {
-            Console.Error.WriteLine($"sync-verify reads test records only ({DevBackend.TestPrefix}…): {conn} is \"{record["name"]}\"");
-            return 1;
+            (rustTarget, http) = RustBackend.Connect(targetSpec, (string)cfg["secrets"]!, conn);
+            config = await rustTarget.GetSyncConfigAsync(conn, CancellationToken.None);
         }
-        var config = await dev.GetSyncConfigAsync(conn, CancellationToken.None);
+        else if (local)
+        {
+            (http, localToken) = LocalBackend.Reader(targetSpec, (string)cfg["secrets"]!);
+            var (lt, _) = await LocalBackend.ConnectAsync(targetSpec, (string)cfg["secrets"]!, baseName, conn);
+            config = await lt.GetSyncConfigAsync(conn, CancellationToken.None);
+        }
+        else
+        {
+            OneC.Sync.Targets.Python.PythonMongoSyncTarget dev;
+            (dev, http, cloud) = DevBackend.Connect((string)cfg["session"]!, conn, new HttpFaults());
+            var record = await DevBackend.GetJsonAsync(http, cloud, $"api/v2/onec/{Uri.EscapeDataString(conn)}");
+            if (!((string?)record["name"] ?? "").StartsWith(DevBackend.TestPrefix, StringComparison.Ordinal))
+            {
+                Console.Error.WriteLine($"sync-verify reads test records only ({DevBackend.TestPrefix}…): {conn} is \"{record["name"]}\"");
+                return 1;
+            }
+            config = await dev.GetSyncConfigAsync(conn, CancellationToken.None);
+        }
         var router = new OrgRouter(config);
         var partitions = config.Partitions.Select(p => p.PartitionId).Append(config.SharedPartitionId).Distinct().ToList();
-        Console.WriteLine($"{baseName} → dev connection {conn}: {partitions.Count} partition(s), " +
+        Console.WriteLine($"{baseName} → {(rust ? "Rust" : local ? "local backend/1c" : "dev")} connection {conn}: {partitions.Count} partition(s), " +
                           $"{config.Partitions.Count(p => p.OrgRef is not null)} org binding(s)");
 
         // ---- 1C: the canonical rows, as a fresh snapshot would send them ----
@@ -97,10 +120,37 @@ internal static class SyncVerify
         var dupStored = new List<string>();
         var otherTables = new Dictionary<string, int>(StringComparer.Ordinal);
         long storedRows = 0;
+        if (rustTarget is not null)
+            foreach (var p in partitions)
+                foreach (var plan in plans)
+                    await foreach (var row in rustTarget.ReadRowsAsync(p, plan.Table))
+                    {
+                        storedRows++;
+                        var raw = row.Data ?? new JsonObject();
+                        string key;
+                        try { key = CanonicalMapper.Key(plan, raw); }
+                        catch (RowMappingException e) { dupStored.Add($"{p}/{plan.Table}: unkeyable row {row.Key}: {e.Message}"); continue; }
+                        // The stored key must be the one the row's own fields give (the key rule, §7).
+                        if (key != row.Key) { dupStored.Add($"{p}/{plan.Table}: unkeyable row {row.Key}: its fields give key {key}"); continue; }
+                        if (!stored.TryGetValue((p, plan.Table), out var d)) stored[(p, plan.Table)] = d = new(StringComparer.Ordinal);
+                        if (!d.TryAdd(key, raw)) dupStored.Add($"{p}/{plan.Table} {key}");
+                    }
+        else
         foreach (var p in partitions)
             for (int page = 1; ; page++)
             {
-                var json = await DevBackend.GetJsonAsync(http, cloud, $"api/v2/entity?oneCId={p}&pageSize=1000&pageNumber={page}");
+                string pageUrl = $"api/v2/entity?oneCId={p}&pageSize=1000&pageNumber={page}";
+                JsonNode json;
+                if (localToken is not null)
+                {
+                    using var req = new HttpRequestMessage(HttpMethod.Get, pageUrl);
+                    req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", localToken);
+                    using var resp = await http.SendAsync(req);
+                    string text = await resp.Content.ReadAsStringAsync();
+                    if (!resp.IsSuccessStatusCode) throw new InvalidOperationException($"{pageUrl}: {(int)resp.StatusCode} {text}");
+                    json = JsonNode.Parse(text)!;
+                }
+                else json = await DevBackend.GetJsonAsync(http, cloud!, pageUrl);
                 var items = json["results"]!.AsArray().OfType<JsonObject>().ToList();
                 foreach (var i in items)
                 {
@@ -150,11 +200,13 @@ internal static class SyncVerify
                 }
             }
             int dups = dupStored.Count(d => d.Contains("/" + t.Table + " ", StringComparison.Ordinal));
-            bool windowed = t.From is not null && Families.IsRegister(t.Family);
+            // A From date windows documents too (SnapshotRunner reads documents from it); 1C's COUNT is
+            // of the whole table, so it only proves anything for an unwindowed one.
+            bool windowed = t.From is not null && (Families.IsRegister(t.Family) || t.Family == Families.Document);
             bool countOk = windowed || counts[t.Table] == want;
             int tableBad = missing + extra + wrongPart + wrongContent + dups + (countOk ? 0 : 1) + (sentRows > want ? 1 : 0);
             bad += tableBad;
-            string parts = string.Join(", ", partitions.Select(p => $"{(p == config.SharedPartitionId ? "shared" : p[^6..])} {stored.GetValueOrDefault((p, t.Table))?.Count ?? 0}"));
+            string parts = string.Join(", ", partitions.Select(p => $"{(p == config.SharedPartitionId ? "shared" : p.Length > 6 ? p[^6..] : p)} {stored.GetValueOrDefault((p, t.Table))?.Count ?? 0}"));
             Console.WriteLine($"{(tableBad == 0 ? "OK  " : "BAD ")} {t.Table}: 1C count {counts[t.Table]}{(windowed ? $" (whole register; window from {t.From:yyyy-MM-dd})" : "")}, " +
                               $"canonical {want} (sent {sentRows}), backend {have} [{parts}]; missing {missing}, stale/extra {extra}, " +
                               $"wrong partition {wrongPart}, wrong content {wrongContent}, duplicate keys {dups}");
@@ -169,7 +221,7 @@ internal static class SyncVerify
         foreach (var d in dupStored.Where(d => d.Contains("unkeyable", StringComparison.Ordinal))) { Console.WriteLine("BAD  " + d); bad++; }
         foreach (var (table, n) in otherTables) Console.WriteLine($"note: {n} stored row(s) of {table}, a table not in this run's plan");
         foreach (var (org, table, rows) in unmapped) Console.WriteLine($"unmapped organisation {org}: {rows} row(s) of {table} wait for a binding");
-        Console.WriteLine(bad == 0 ? "PASS: the dev backend holds exactly the canonical 1C rows" : $"FAIL: {bad} difference(s)");
+        Console.WriteLine(bad == 0 ? $"PASS: the {(rust ? "Rust" : local ? "local backend/1c" : "dev")} backend holds exactly the canonical 1C rows" : $"FAIL: {bad} difference(s)");
         if (reportPath is not null)
             await File.WriteAllTextAsync(reportPath, new JsonObject
             {

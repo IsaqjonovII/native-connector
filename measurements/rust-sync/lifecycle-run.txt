@@ -1,0 +1,46 @@
+18:54:45 step 1 create
+19:01:11   picked up after 35.9 s
+19:01:11   idle after 0.1 s
+19:01:11   Rust rows of 76425291-c257-11f1-b4e8-b42e998ffa17 : Document_ПоступлениеТоваровУслуг 1
+19:01:46   verify r5-1-create PASS
+19:01:46 step 2 post
+19:02:16 step 2 post (edge)
+19:02:35   1C answered: {"id":"76425291-c257-11f1-b4e8-b42e998ffa17","posted":true,"number":"0000-000001","sessionId":1}
+19:02:37   picked up after 2.3 s
+19:02:37   idle after 0 s
+19:02:37   Rust rows of 76425291-c257-11f1-b4e8-b42e998ffa17 : AccountingRegister_Хозрасчетный_RecordType 1; Document_ПоступлениеТоваровУслуг 1
+19:02:49   verify r5-2-post PASS
+19:02:49 step 3 change-date (edge)
+19:02:50   1C answered: {"id":"76425291-c257-11f1-b4e8-b42e998ffa17","updated":true,"posted":true,"autoUnposted":false,"reposted":true,"sessionId":1}
+19:02:53   picked up after 2.3 s
+19:02:53   idle after 0 s
+19:02:53   Rust rows of 76425291-c257-11f1-b4e8-b42e998ffa17 : AccountingRegister_Хозрасчетный_RecordType 1; Document_ПоступлениеТоваровУслуг 1
+19:02:58   verify r5-3-change-date PASS
+19:02:58 step 4 unpost (edge)
+19:02:59   1C answered: {"id":"76425291-c257-11f1-b4e8-b42e998ffa17","unposted":true}
+19:03:03   picked up after 4.3 s
+19:03:03   idle after 0 s
+19:03:03   Rust rows of 76425291-c257-11f1-b4e8-b42e998ffa17 : Document_ПоступлениеТоваровУслуг 1
+19:03:09   verify r5-4-unpost PASS
+19:03:09 step 5 repost (edge)
+19:03:09   1C answered: {"id":"76425291-c257-11f1-b4e8-b42e998ffa17","posted":true,"number":"0000-000001","sessionId":1}
+19:03:12   picked up after 2.2 s
+19:03:12   idle after 0 s
+19:03:12   Rust rows of 76425291-c257-11f1-b4e8-b42e998ffa17 : AccountingRegister_Хозрасчетный_RecordType 1; Document_ПоступлениеТоваровУслуг 1
+19:10:57   verify r5-5-repost PASS
+19:10:57 step 6 mark-deleted (edge)
+19:12:02   1C answered: 
+20:12:03   FAIL: Rust did not change within 60 min
+22:08:47 step 6 mark-deleted (edge)
+22:09:02   1C answered in 14 s: {"ref":"76425291-c257-11f1-b4e8-b42e998ffa17","number":"0000-000001","kind":"MarkDeleted","sessionId":1}
+22:09:12   picked up after 10.7 s
+22:09:12   idle after 0 s
+22:09:12   Rust rows of 76425291-c257-11f1-b4e8-b42e998ffa17 : Document_ПоступлениеТоваровУслуг 1
+22:09:22   verify r5-6-mark-deleted PASS
+22:09:22 step 7 delete (edge)
+22:09:41   1C answered in 19.3 s: {"id":"76425291-c257-11f1-b4e8-b42e998ffa17","deleted":true}
+22:09:44   picked up after 2.3 s
+22:09:44   idle after 0 s
+22:09:44   Rust rows of 76425291-c257-11f1-b4e8-b42e998ffa17 : none
+22:09:49   verify r5-7-delete PASS
+22:09:49 lifecycle PASS

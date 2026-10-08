@@ -101,6 +101,61 @@ public sealed class SyncEngineTests : IDisposable
         Assert.Equal(0, host.Status()[0].PendingWork);
     }
 
+    /// <summary>
+    /// Data coverage (RUST_SYNC_CONTRACT §4.9): "loading" is stored before a document or register table's
+    /// first row, the final reach after its snapshot — the From date for a windowed table, complete for
+    /// a whole one; catalogs are never listed; a failed report is sent again on the next activation.
+    /// </summary>
+    [Fact]
+    public async Task CoverageIsLoadingBeforeTheFirstRowAndTheRealReachAfter()
+    {
+        var target = new StubSyncTarget(StubMode.V3);
+        target.FailNext(new TargetResult(Outcome.Transient, 503, "down"), times: 1, op: "coverage");
+        var windowed = Doc with { From = new DateTime(2026, 9, 1) };
+        var db = SyncDb.Open(Path.Combine(_dir, "cov.db"));
+        using var _ = db;
+        var host = new SyncEngineHost(db, target, _onec, new[] { new BasePlan("b", false, _log, "conn", new[] { Cat, windowed, Acc }) },
+                                      new SyncBudgets { FeedPollActive = TimeSpan.Zero, FeedPollIdle = TimeSpan.Zero });
+        await Until(host, () => host.Status()[0].Mode == SyncModes.Incremental && target.Coverage("conn", Acc.Table) is { Complete: true });
+
+        var calls = target.Calls.ToList();
+        int loading = calls.FindLastIndex(c => c == $"coverage conn {Doc.Table}:loading");
+        int firstRow = calls.FindIndex(c => c.StartsWith($"upload conn/{Doc.Table}", StringComparison.Ordinal));
+        Assert.True(loading >= 0 && firstRow > loading, "loading must be stored before the first row: " + string.Join(" | ", calls.Where(c => c.Contains(Doc.Table))));
+        Assert.Equal(new TableCoverage(Doc.Table, new DateTime(2026, 9, 1), false), target.Coverage("conn", Doc.Table));
+        Assert.Equal(new TableCoverage(Acc.Table, null, true), target.Coverage("conn", Acc.Table));
+        Assert.Null(target.Coverage("conn", Cat.Table));
+        // The first "loading" failed (503) and stopped the snapshot before any row; the next activation sent it again.
+        Assert.Equal(2, calls.Count(c => c == $"coverage conn {Doc.Table}:loading"));
+    }
+
+    /// <summary>R10 2026-10-08: a base copied before coverage existed gets its final reach on the next run, without a new copy.</summary>
+    [Fact]
+    public async Task ABaseCopiedWithoutCoverageGetsItOnTheNextRun()
+    {
+        var windowed = Doc with { From = new DateTime(2026, 9, 1) };
+        var plans = new[] { new BasePlan("b", false, _log, "conn", new[] { Cat, windowed, Acc }) };
+        var budgets = new SyncBudgets { FeedPollActive = TimeSpan.Zero, FeedPollIdle = TimeSpan.Zero };
+        var db = SyncDb.Open(Path.Combine(_dir, "old.db"));
+        using var _ = db;
+        var first = new StubSyncTarget(StubMode.V3);
+        var host = new SyncEngineHost(db, first, _onec, plans, budgets);
+        await Until(host, () => host.Status()[0].Mode == SyncModes.Incremental && first.Coverage("conn", Acc.Table) is { Complete: true });
+        await host.StopAsync();
+        host.Dispose();
+        // As if copied by a build without coverage: nothing was ever sent.
+        db.Write(tx => { foreach (var t in new[] { windowed, Acc }) tx.DeleteMeta(BaseSyncAgent.CoverageSentKey("b", t.Table)); });
+
+        var second = new StubSyncTarget(StubMode.V3);
+        var again = new SyncEngineHost(db, second, _onec, plans, budgets);
+        await Until(again, () => second.Coverage("conn", Acc.Table) is not null && second.Coverage("conn", Doc.Table) is not null);
+        Assert.Equal(new TableCoverage(Doc.Table, new DateTime(2026, 9, 1), false), second.Coverage("conn", Doc.Table));
+        Assert.Equal(new TableCoverage(Acc.Table, null, true), second.Coverage("conn", Acc.Table));
+        Assert.DoesNotContain(second.Calls, c => c.StartsWith("upload", StringComparison.Ordinal));     // no new copy
+        await again.StopAsync();
+        again.Dispose();
+    }
+
     [Fact]
     public async Task ABaseTheOldConnectorServesIsRefusedUnlessADeveloperOverrides()
     {

@@ -29,8 +29,17 @@ internal static class SyncMode
         var cfg = JsonNode.Parse(await File.ReadAllTextAsync(configPath))!.AsObject();
         string dbPath = (string?)cfg["db"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                                                            "AIBA", "Connector", "sync", "sync.db");
-        var db = SyncDb.Open(dbPath);
         string targetSpec = (string?)cfg["target"] ?? "stub";
+        // R10: one backend per base, a change only on an explicit switch, each backend with its own state.
+        if (targetSpec != "stub")
+            foreach (var b in cfg["bases"]!.AsArray().OfType<JsonObject>())
+            {
+                string name = (string)b["name"]!;
+                string outcome = TargetBinding.Apply(TargetBinding.FileFor(dbPath), name,
+                    TargetBinding.Identity(targetSpec, (string?)b["connectionId"] ?? name), dbPath, (bool?)cfg["switch"] == true, DateTimeOffset.UtcNow);
+                Console.Error.WriteLine($"sync: {name} → {targetSpec} ({outcome})");
+            }
+        var db = SyncDb.Open(dbPath);
         IBackendSyncTarget target;
         Http = new HttpFaults { Armable = (bool?)cfg["faults"] == true && targetSpec != "stub" };
         if (targetSpec == "stub") target = new StubSyncTarget(StubMode.V2) { KeepJson = false };
@@ -49,10 +58,25 @@ internal static class SyncMode
             RebuildRefusal = (bool?)cfg["allowRebuild"] == true ? null
                 : "copying a table again deletes its rows on the shared dev backend: disabled for S12 unless the developer sets allowRebuild";
         }
+        else if (targetSpec.StartsWith(RustBackend.Scheme, StringComparison.Ordinal))
+        {
+            // R3: the Rust onec module, local instance only; one Rust connection per base (its connectionId).
+            if (cfg["bases"]!.AsArray().Count != 1) throw new ArgumentException("sync rust target: exactly one base per run");
+            string conn = (string?)cfg["bases"]![0]!["connectionId"] ?? throw new ArgumentException("sync rust target: the base needs \"connectionId\" = its Rust connection id");
+            var rust = RustBackend.Connect(targetSpec, (string?)cfg["secrets"] ?? throw new ArgumentException("sync rust target: \"secrets\" missing"), conn).Target;
+            target = rust;
+            // R9: normal writes from the cloud — off unless this run says so (writes are never implied by sync).
+            if ((bool?)cfg["commands"] == true)
+            {
+                Commands = new CommandRunner(sup, rust, (string)cfg["bases"]![0]!["name"]!);
+                Commands.Start();
+            }
+        }
         else
         {
-            if (!new Uri(targetSpec).IsLoopback) throw new ArgumentException("sync target must be \"stub\", \"dev\" or a loopback URL (D-2: never production)");
-            target = (await LocalBackend.ConnectAsync(targetSpec, (string)cfg["secrets"]!, "sync")).Target;
+            if (!new Uri(targetSpec).IsLoopback) throw new ArgumentException("sync target must be \"stub\", \"dev\", \"rust:<loopback URL>\" or a loopback URL (D-2: never production)");
+            target = (await LocalBackend.ConnectAsync(targetSpec, (string)cfg["secrets"]!, "sync",
+                                                      (string?)cfg["bases"]?[0]?["connectionId"])).Target;
         }
 
         var locator = new LogLocator();
@@ -100,6 +124,9 @@ internal static class SyncMode
                 t["from"] is JsonValue f ? DateTime.Parse(f.GetValue<string>(), CultureInfo.InvariantCulture) : null,
                 t["refreshEveryMinutes"] is JsonValue m ? TimeSpan.FromMinutes(m.GetValue<double>()) : null);
         }).DistinctBy(t => t.Table, StringComparer.Ordinal).ToList();
+
+    /// <summary>The command runner of a Rust target with <c>"commands": true</c>; null otherwise.</summary>
+    public static CommandRunner? Commands { get; private set; }
 
     /// <summary>The sync target's HTTP calls (timings, sizes) and the S12 fault switches.</summary>
     public static HttpFaults Http { get; private set; } = new();

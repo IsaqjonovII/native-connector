@@ -1036,3 +1036,47 @@ copies to a test target on this computer. Nothing is sent to AIBA yet." Pause pe
 **Verified.** Fresh data folder with no `ui.json`, bilim imported: the app wrote `sync.json`, the
 engine reached "Up to date" (5 of 5 tables) with no setting; Settings shows only Browse 1C data
 (`measurements/shots/2026-10-03/`).
+
+## D51 — Roadmap: Sync and writes first, Rust is the target backend, control plane parked (2026-10-07)
+
+**Decision (developer, 2026-10-07).** Order: normal Sync right → normal read/write/post right →
+Rust onec backend (`next-modules/onec`) as the backend the Connector is built for → prove Rust
+against 1C on the test bases → Python deprecation → only then Sync Table Manifest, modules,
+adaptive policy, presence/fleet, remote explorer, remote diagnostics, maintenance jobs.
+`CONTROL_PLANE_DESIGN.md` is PARKED; none of P-1 … P-12 is approved. `cloud-os` is not part of the
+future architecture (historical caller evidence only).
+
+**How Rust is reached.** A new API `/api/sync/v1` in the Rust module (`RUST_SYNC_CONTRACT.md`), not
+the Python-shaped routes. It writes into the existing `onec.entity_data` (the Connector's partition =
+the Rust `onec_id`), so the existing readers keep working. Per-row outcomes, idempotent batch ids,
+a source-version guard, one atomic multi-partition recorder call (`READ SCOPE == DELETE SCOPE`),
+explicit deletes without count caps, a confirmed table purge, exact counts, a verification read,
+transactional coverage, a server-side organisation guard. Connector: `RustSyncTarget`; the Python
+target stays as a temporary compatibility/reference target; `RecorderSync` became one call for all
+partitions.
+
+**Rule.** Rust must match 1C. Where Python disagrees with 1C, Rust follows 1C and the difference is
+recorded as a Python bug. Local only (loopback Rust, own Postgres cluster) until the R7 security
+items (JWT company access, tenant binding) are closed and the developer approves.
+
+## D52 — Rust backend: hardened access, pulled write commands, one backend per base (2026-10-08)
+
+**R7 (built).** The Rust sync API decides access the way aiba-next does: the JWT names this tenant, the
+user reaches only the companies `user_company_ids` gives them (tenant admins all), per connection and per
+partition; anything not theirs answers like something that does not exist; auth failures are one flat 401;
+"could not check" is 503, never "denied". Service secret compared in constant time everywhere.
+
+**R9 (built).** Normal writes travel as durable commands stored on the Rust module and PULLED by the
+Supervisor (D41 stays: the Connector opens nothing inbound). Kinds are exactly the host's write operations
+(document create/update/post/unpost/mark-deleted, catalog create / compare-and-set); everything else is
+refused before it is stored. The result never writes `entity_data`: the change comes back through Sync, so
+the cloud only ever holds what 1C holds. Pull is a v1 transport choice, not the parked P-1; the command table
+and states fit a push channel later. Catalog writes follow D18: only catalogs that have a Комментарий, only
+items AIBA created. **Open product decision:** writes to objects AIBA did not create (posting users' drafts,
+updating customer catalog items) — refused today.
+
+**R10 (built).** One backend per base, recorded beside the sync state; another backend only on an explicit
+switch; each backend keeps its own sync state, so a switch copies in full and a rollback catches up from its
+own cursor. Every activation also sends the final data coverage of a copied table that never had one, so a
+base copied before coverage existed never reads as "whole history". Production stays closed until the
+developer approves (D-2).
