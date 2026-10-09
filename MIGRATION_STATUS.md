@@ -2,6 +2,24 @@
 
 Only things that were built **and** verified are DONE. Last verified: 2026-10-08.
 
+## V1 release candidate — 2026-10-09 (local; nothing committed/pushed/deployed) — see V1_RELEASE_CHECKLIST.md
+
+- **Write round trip on a server base:** `bilimsrv` = today's bilim dumped (`D:\1C\backups\bilim-20261008.dt`)
+  and restored into the local 1C server (`Srvr=WIN-11-2070;Ref=bilimsrv2`, PG 5432) — server bases do not hit
+  the file-engine stall. Rust connection 299. First copy + `sync-verify` PASS; `rust-r9.ps1`,
+  `rust-r9-catalog.ps1`, `rust-r9-customer.ps1` all **PASS** with verify after every step (scripts now take
+  `R9_CONN/R9_BASE/R9_EDGE_PORT/R9_BASES/R9_SYNC_CONFIG`). bilim kept for the gate's file-base coverage.
+- **Reference rename (D54)** fixed and proven live (20/20 referencing documents follow, full verify PASS);
+  live bug on the way: `ТипЗнч` is not exposed over the COM external connection → type via `ОписаниеТипов`.
+- **Authorization (D54):** command creation service-only; lease/report scoped to the user's partitions; tenant
+  fail-closed. aiba-next proxy refuses escaping paths. Remaining production items in BACKEND_SECURITY_FINDINGS P-1.
+- **Distributable:** `tools/publish.ps1` (self-contained, versioned, secrets scan); the published app crashed
+  at launch (publish drops `.pri`/`.xbf`) — fixed; clean start / close / restart smoke PASS.
+- Rust 104/104 with DB tests; live Rust suite 18/18 (SyncRust*), new live tests listed in the checklist.
+- **D45 gate MET 2026-10-09 on the final build:** runs 3 and 4 back to back, 459/459 each, 0 failed, 0 skipped,
+  no leftover processes, 0 `AIBA_REWRITE_` documents (`tools/gate.ps1`, logs `measurements/gate/`). Runs 1–2
+  failed only on a stale D18 test (rewritten to D53) and two bilim file-engine connect stalls.
+
 ## Rust onec backend — R0–R10 DONE locally (Sync proven against 1C, security hardened, normal writes round-trip, per-base switch + rollback) (2026-10-08, D51, D52); not committed, no production
 
 Order and plan: `MIGRATION_PLAN.md` (roadmap), `PYTHON_TO_RUST_MIGRATION_PLAN.md`; audit
@@ -116,11 +134,45 @@ coverage call its backend already had).
   final reach of a copied table once (per window), with no new copy; verified on connection 13 (2000 rows,
   nothing rewritten). Tests: `SyncTargetBindingTests`, `ABaseCopiedWithoutCoverageGetsItOnTheNextRun`;
   Sync suite 153/153.
-- **Open:** production stays closed until the developer approves; the bilim file-base stall (cause
-  unknown, environment); the product decision on writes to objects AIBA did not create (D18 refuses
-  them; old flows posted user drafts and updated customer catalog items); a real per-tenant switch also
-  needs the old Connector off for the base (D-1) and the cloud's readers pointed at the backend that is
-  active.
+- **Write ownership per operation (D53) — DONE locally 2026-10-08.** Customer documents: post / unpost
+  by exact ref; typed update only as compare-and-set (`expected` values and/or `expectedVersion`; a
+  customer document cannot take the AIBA marker, an AIBA one cannot lose it); mark for deletion stays
+  AIBA-only; customer catalog items: compare-and-set with a required `expected` (Rust refuses without).
+  `tools/rust-r9-customer.ps1` on bilim: post, unpost + repost, blind / stale / marker-claiming updates
+  refused and changing nothing, CAS update and back, deletion mark refused, catalog blind (Rust) / stale /
+  claiming refused, CAS rename and back — every write followed by Sync convergence and `sync-verify`
+  PASS (`r9-customer-run.txt`, run 1008141433). Polling stays this phase's transport only
+  (`CommandRunner.ExecuteAsync` / `Wake`).
+  **Found and fixed on the way:**
+  - **Sync ignored a table's window in incremental work** (the snapshot honoured it): reposting a
+    2025-04-29 document put its movements into Rust past the register's 2025-08-01 window. Now the
+    recorder, object and register-refresh handlers keep to `From` (`CanonicalMapper.InWindow`); a copy
+    already outside is removed by the reconcile. Test `IncrementalWorkKeepsToTheTablesWindow` (V2+V3);
+    live: the 2 stray rows left Rust 14 s after the next post.
+  - **A retried write whose first attempt was still inside 1C was reported as a final failure**
+    ("another write with marker … is still running", Validation). Now `Busy`, retryable: the lease
+    hands it out again and create finds its own marker.
+  - **Command lease tokens:** any caller with access to the connection could report a command's
+    outcome. Every lease now hands out a per-command token (sha256 of an OS-random secret and the id);
+    a report must quote the current one, else 409 `lease_not_held`. Live test
+    `OnlyTheHolderOfTheCurrentLeaseReportsACommandsOutcome`.
+  - **Known gap, not fixed (needs a product choice):** document table parts hold references as names;
+    a catalog rename leaves those names stale in Rust until each document changes (20 documents after
+    one rename on bilim; PASS again once the name was restored). Old Connector shape, same gap.
+- **Consumer gap audit + must-have Rust gaps — DONE 2026-10-08.** Audits
+  `research/rust-backend-audit/D-aiba-next-consumers.md`, `E-other-consumers.md`. Fixed in Rust (cargo
+  104/104 with DB tests; live Rust suite 38/38 incl. multi-tenant):
+  base online from the new Connector (the `/status` route sets `active` / `inactive` on the connection
+  and its bindings; the Supervisor reports every 60 s and `stopped` on a clean stop — before, a base
+  served by the new Connector always showed offline in aiba-next); `entity-data` list `total` = real
+  count (was the page length); venkon `CUSTOMER_ORDER` / `TRADING_POINTS` / `INQUIRY_SOURCES` mapped
+  + one-time relabel of stored rows (ran on the test DB); by-type `ref_in` (≤500, 400 on a bad value)
+  / `owner` / `number` with echoes; reconciliation `lastSyncedAt` / `syncStale` computed per request.
+  Each checked live against connection 13. Left to callers / decisions: PYTHON_RETIREMENT_PLAN.
+- **Open:** production stays closed (D53); the bilim file-base stall (environment; it stalled again
+  2026-10-08 14:27 during the R9 rerun's create — see below); KANSLER decision (port ≈10 routes, or
+  move KANSLER to aiba-next); aiba-next caller fixes; the dev cut-over prerequisites
+  (`DEV_RUST_CUTOVER_RUNBOOK.md` §0).
 
 ## Old Connector reverse-engineering — DONE 2026-10-03 (read-only)
 

@@ -52,7 +52,8 @@ public sealed class RefreshRegisterHandler(SyncDb db, IOneCReader reader, IBacke
             var page = chart ? await reader.ChartPageAsync(baseId, t.Name, offset, PageSize, ct)
                              : await reader.RegisterPageAsync(baseId, t, null, 0, after, PageSize, null, ct);
             offset += page.Rows.Count;
-            var mapped = page.Rows.Select(r => CanonicalMapper.Map(t, r)).ToList();
+            // Rows before the window are not seen, so a copy sent earlier is removed with the gone ones.
+            var mapped = page.Rows.Where(r => CanonicalMapper.InWindow(t, r)).Select(r => CanonicalMapper.Map(t, r)).ToList();
             read += mapped.Count;
             var changed = db.Write(tx => tx.DiffRegisterRows(baseId, t.Table, run, mapped.Select(m => (m.Key, Hash(m.Row))).ToList()))
                             .ToHashSet(StringComparer.Ordinal);

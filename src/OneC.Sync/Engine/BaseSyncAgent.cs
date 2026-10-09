@@ -3,6 +3,7 @@ using OneC.Sync.Abstractions;
 using OneC.SyncState;
 using OneC.Sync.Errors;
 using OneC.Sync.Incremental;
+using OneC.Sync.Mapping;
 using OneC.Sync.Routing;
 using OneC.Sync.Scheduling;
 using OneC.Sync.Snapshot;
@@ -63,6 +64,7 @@ public sealed class BaseSyncAgent : IBaseAgent
             var parts = BuildParts(caps, router);
             await CatchUpNewlyBoundAsync(router, a);
             await FlushCoverageAsync(router, a.Stop);
+            await SeedShownAsync(a.Stop);
 
             string mode = Recovery.StartMode(_db, _plan.BaseId, _plan.LogDir is not null);
             switch (mode)
@@ -231,6 +233,38 @@ public sealed class BaseSyncAgent : IBaseAgent
         }
     }
 
+    /// <summary>
+    /// A catalog copied before renames were followed has no stored names, and an item with none never
+    /// triggers a referrer search (it reads as new). So once per such table: read the catalog and store
+    /// each item's shown name — only where none is stored, so a rename already waiting in the queue is
+    /// still seen as one. Uploads nothing.
+    /// </summary>
+    private async Task SeedShownAsync(CancellationToken ct)
+    {
+        foreach (var t in _plan.Tables.Where(t => t.Family == Families.Catalog))
+        {
+            if (_db.Read(tx => tx.GetMeta(SnapshotDoneKey(_plan.BaseId, t.Table)) is null ||
+                               tx.GetMeta(CanonicalMapper.ShownSeededKey(_plan.BaseId, t.Table)) is not null)) continue;
+            string? after = null;
+            while (true)
+            {
+                ct.ThrowIfCancellationRequested();
+                var page = await _reader.CatalogPageAsync(_plan.BaseId, t.Name, after, 1000, ct);
+                var shown = page.Rows.Select(r => (Key: CanonicalMapper.Key(t, r), Shown: CanonicalMapper.ShownOf(r)))
+                                     .Where(x => x.Shown is not null).ToList();
+                _db.Write(tx =>
+                {
+                    foreach (var (key, s) in shown)
+                        if (tx.GetMeta(CanonicalMapper.ShownKey(_plan.BaseId, t.Table, key)) is null)
+                            tx.SetMeta(CanonicalMapper.ShownKey(_plan.BaseId, t.Table, key), s!);
+                });
+                if (!page.HasMore || page.NextAfter is null) break;
+                after = page.NextAfter;
+            }
+            _db.Write(tx => tx.SetMeta(CanonicalMapper.ShownSeededKey(_plan.BaseId, t.Table), SyncDb.Iso(tx.Now)));
+        }
+    }
+
     private async Task SnapshotAsync(BaseActivation a, Parts parts, IPartitioner router)
     {
         if (_plan.LogDir is not null) parts.Feed.Handshake(_plan.BaseId, _plan.LogDir);
@@ -259,6 +293,7 @@ public sealed class BaseSyncAgent : IBaseAgent
             _db.Write(tx =>
             {
                 tx.SetMeta(SnapshotDoneKey(_plan.BaseId, t.Table), SyncDb.Iso(tx.Now));
+                if (t.Family == Families.Catalog) tx.SetMeta(CanonicalMapper.ShownSeededKey(_plan.BaseId, t.Table), SyncDb.Iso(tx.Now));
                 if (Covered(t)) tx.SetMeta(CoveragePendingKey(_plan.BaseId, t.Table), SyncDb.Iso(tx.Now));
             });
             if (Covered(t))

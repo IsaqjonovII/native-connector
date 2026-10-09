@@ -66,11 +66,11 @@ public sealed class SyncRecorderTests : IDisposable
         }).ToList();
     }
 
-    private (WorkExecutor Exec, StubSyncTarget Target, SyncRecorderHandler Rec) Make(StubMode mode, IPartitioner? parts = null)
+    private (WorkExecutor Exec, StubSyncTarget Target, SyncRecorderHandler Rec) Make(StubMode mode, IPartitioner? parts = null, DateTime? from = null)
     {
         var t = new StubSyncTarget(mode);
         var up = new Uploader(t, new UploadGate(new SyncBudgets()));
-        var tables = new Dictionary<string, TablePlan> { [Doc.Table] = Doc, [Acc.Table] = Acc, [Vat.Table] = Vat };
+        var tables = new Dictionary<string, TablePlan> { [Doc.Table] = Doc with { From = from }, [Acc.Table] = Acc with { From = from }, [Vat.Table] = Vat };
         parts ??= new ByOrg();
         // A realistic table: v2 refuses to prune more than 5 % of it, and one of one is 100 %.
         for (int i = 0; i < 100; i++) t.Seed(P, Doc.Table, FakeOneC.Guid(500_000 + i), "{}");
@@ -151,6 +151,24 @@ public sealed class SyncRecorderTests : IDisposable
         Assert.False(t.Rows(P, Doc.Table).ContainsKey(D1));
         Assert.Equal(2, Cloud(t, "p" + org2[..8], Acc).Count);
         Assert.Equal(new[] { "p" + org2[..8] }, _db.Read(tx => tx.GetPartitions("b", D1)));
+    }
+
+    [Theory, InlineData(StubMode.V2), InlineData(StubMode.V3)]
+    public async Task IncrementalWorkKeepsToTheTablesWindow(StubMode mode)
+    {
+        // R9, 2026-10-08: reposting a document older than the register's window sent its movements.
+        var (exec, t, _) = Make(mode, from: new DateTime(2026, 8, 1));
+        _onec.Tables["Acc"] = new() { FakeOneC.MovementRow(1, 1, new DateTime(2026, 9, 1)), FakeOneC.MovementRow(1, 2, new DateTime(2026, 7, 31)) };
+        await Run(exec, WorkFlags.Changed | WorkFlags.Movements);
+        Assert.Equal(new[] { D1 + "#1" }, Cloud(t, P, Acc).Keys);
+        Assert.True(t.Rows(P, Doc.Table).ContainsKey(D1));
+
+        // The document is redated before the window: it and every movement leave the backend.
+        _onec.Tables["Doc"][0]["date"] = "2026-07-15T00:00:00";
+        _onec.Tables["Acc"] = new() { FakeOneC.MovementRow(1, 1, new DateTime(2026, 7, 15)) };
+        await Run(exec, WorkFlags.Changed | WorkFlags.Movements);
+        Assert.Empty(Cloud(t, P, Acc));
+        Assert.False(t.Rows(P, Doc.Table).ContainsKey(D1));
     }
 
     [Fact]

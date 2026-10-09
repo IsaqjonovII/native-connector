@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 using OneC.Interop;
@@ -10,10 +9,11 @@ public sealed record CatalogWritten(string Id, string? Code, string Name, bool C
 
 /// <summary>
 /// Catalog writes for R9 (PYTHON_TO_RUST_MIGRATION_PLAN): create an item, and compare-and-set update.
-/// The same rules as documents (D18, D38): only catalogs that have a Комментарий can carry the
-/// ownership marker, only items AIBA created (Комментарий starts with the host's prefix) can be
-/// changed, values are converted by the document writer's own rules (exact references, no item
-/// auto-created, a value 1C changes is an error), and a create is idempotent by its marker.
+/// Ownership is per operation (D53): a CREATE carries the AIBA marker in Комментарий and is idempotent
+/// by it (so only catalogs that have a Комментарий); a COMPARE-AND-SET update reaches any existing item
+/// — customer-created too, a core use case — by exact ref and only with the old values the caller read;
+/// delete stays AIBA-owned and local (test cleanup). Values are converted by the document writer's own
+/// rules (exact references, no item auto-created, a value 1C changes is an error).
 /// <para>Compare-and-set: every field in <c>expected</c> must still hold that value in 1C, else
 /// nothing is written and the answer names each field with what 1C holds now (<c>conflict</c>) —
 /// a cloud that read the item earlier never overwrites a change it has not seen.</para>
@@ -57,7 +57,7 @@ public sealed class CatalogWriter(WriteService writes)
         var stripe = marker is null ? null
             : DocumentWriter.MarkerStripes[(uint)StringComparer.Ordinal.GetHashCode(baseName.ToLowerInvariant() + "|" + marker) % (uint)DocumentWriter.MarkerStripes.Length];
         if (stripe is not null && !stripe.Wait(writes.GateTimeout, ct))
-            throw WriteRejected.Bad($"another write with marker '{marker}' is still running");
+            throw WriteRejected.MarkerInFlight(marker!);
         try
         {
             return writes.RunGated(baseName, WriteKind.Create, ct, ctx =>
@@ -85,38 +85,30 @@ public sealed class CatalogWriter(WriteService writes)
         finally { stripe?.Release(); }
     }
 
+    /// <summary>
+    /// Compare-and-set update of an existing item — a customer-created one too (D53: a core use case), by
+    /// exact ref, and only with the old values the caller read (<paramref name="expected"/>, never empty).
+    /// The ownership marker can neither be dropped from an AIBA item nor added to a customer's.
+    /// </summary>
     public CatalogWritten CompareAndSet(string baseName, string catalog, string id, JsonObject expected, JsonObject set, CancellationToken ct = default)
     {
         ReadService.ValidateIdentifier(catalog, nameof(catalog));
         if (!Guid.TryParse(id, out _)) throw WriteRejected.Bad($"'{id}' is not a GUID");
         if (set.Count == 0) throw WriteRejected.Bad("'set' names no field to change");
+        if (expected.Count == 0) throw WriteRejected.Bad("'expected' must name the old values of the fields the caller read (compare-and-set)");
         if (set.Select(kv => kv.Key).FirstOrDefault(k => k.StartsWith('_')) is { } directive)
             throw WriteRejected.Bad($"directive '{directive}' is not accepted");
-        if (set[CommentField] is JsonValue cv && (!cv.TryGetValue(out string? c) || !c.StartsWith(writes.CommentPrefix, StringComparison.Ordinal)))
-            throw WriteRejected.Bad($"'{CommentField}' must keep its AIBA marker ('{writes.CommentPrefix}…')");
 
         return writes.RunGated(baseName, WriteKind.Update, ct, ctx =>
         {
             using var scope = new ComScope();
             var schema = Schema(ctx, catalog);
-            var obj = LoadOwned(ctx, scope, catalog, id);
+            var obj = LoadByRef(ctx, scope, catalog, id);
+            CheckMarker(ctx, obj, set, catalog);
 
             // Compare first: a field that moved since the caller read it stops the whole write.
-            var conflicts = new List<WriteDiagnostic>();
-            foreach (var (field, want) in expected)
-            {
-                if (schema.Attribute(field) is null)
-                {
-                    conflicts.Add(new WriteDiagnostic("unknown_attribute", WriteDiagnostic.Error, field, $"Справочник.{catalog} has no '{field}'"));
-                    continue;
-                }
-                string now = Normal(ctx, Dispatch.Get(obj, field, ctx.Error));
-                string was = Normal(want);
-                if (now != was) conflicts.Add(new WriteDiagnostic("conflict", WriteDiagnostic.Error, field, $"expected {Show(was)}, 1C holds {Show(now)}"));
-            }
-            if (conflicts.Count > 0)
-                throw new WriteRejected($"compare-and-set refused: {conflicts.Count} field(s) differ from what the caller expected; nothing written",
-                                        unprocessable: true, conflicts);
+            var conflicts = ExpectedState.Conflicts(ctx, obj, expected, null, f => schema.Attribute(f) is not null, $"Справочник.{catalog}");
+            if (conflicts.Count > 0) throw ExpectedState.Refusal(conflicts);
 
             var diagnostics = new List<WriteDiagnostic>();
             var values = Values(ctx, scope, catalog, schema, set, diagnostics);
@@ -160,6 +152,31 @@ public sealed class CatalogWriter(WriteService writes)
         return values;
     }
 
+    /// <summary>A Комментарий in <paramref name="set"/> keeps ownership as it is: an AIBA item stays marked, a customer's never becomes AIBA's.</summary>
+    private void CheckMarker(SessionContext ctx, object obj, JsonObject set, string what)
+    {
+        if (set[CommentField] is not JsonNode n) return;
+        bool owned = Dispatch.HasMember(obj, CommentField) &&
+                     (Dispatch.GetString(obj, CommentField, ctx.Error) ?? "").StartsWith(writes.CommentPrefix, StringComparison.Ordinal);
+        bool marked = n is JsonValue v && v.TryGetValue(out string? c) && c.StartsWith(writes.CommentPrefix, StringComparison.Ordinal);
+        if (owned && !marked) throw WriteRejected.Bad($"'{CommentField}' must keep its AIBA marker ('{writes.CommentPrefix}…')");
+        if (!owned && marked) throw WriteRejected.Bad($"'{CommentField}' of {what} must not take an AIBA marker: the item was not created by AIBA");
+    }
+
+    private static object LoadByRef(SessionContext ctx, ComScope scope, string catalog, string id)
+    {
+        var catalogs = scope.Track(Dispatch.Get(ctx.Connection, "Справочники", ctx.Error), "Справочники");
+        var manager = scope.Track(Dispatch.Get(catalogs, catalog, ctx.Error), catalog);
+        var uuid = scope.Track(Dispatch.Call(ctx.Connection, "NewObject", ctx.Error, "УникальныйИдентификатор", id), "UUID");
+        var r = scope.Track(Dispatch.Call(manager, "ПолучитьСсылку", ctx.Error, uuid), "Ссылка");
+        var obj = Dispatch.Call(r, "ПолучитьОбъект", ctx.Error);
+        if (obj is null || !Marshal.IsComObject(obj))
+            throw OneCException.Host($"Справочник.{catalog} {id} not found", ctx.Error, "CatalogUpdate", catalog);
+        scope.Add(obj, "item");
+        return obj;
+    }
+
+    /// <summary>Owned items only: the local-edge test cleanup.</summary>
     private object LoadOwned(SessionContext ctx, ComScope scope, string catalog, string id)
     {
         var catalogs = scope.Track(Dispatch.Get(ctx.Connection, "Справочники", ctx.Error), "Справочники");
@@ -202,30 +219,4 @@ public sealed class CatalogWriter(WriteService writes)
         string name = Dispatch.HasMember(obj, "Наименование") ? Dispatch.GetString(obj, "Наименование", ctx.Error) ?? "" : "";
         return new CatalogWritten(id, code, name, created, idempotent, diagnostics, ctx.SessionId);
     }
-
-    /// <summary>A 1C value in the comparable form: text trimmed, numbers by value, dates ISO, a reference by GUID, empty = "".</summary>
-    private static string Normal(SessionContext ctx, object? v) => v switch
-    {
-        null => "",
-        string s => s.TrimEnd(),
-        bool b => b ? "true" : "false",
-        DateTime d => d.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture),
-        decimal or double or float or int or long or short => System.Convert.ToDecimal(v, CultureInfo.InvariantCulture).ToString("0.############", CultureInfo.InvariantCulture),
-        _ when OneCValue.IsCom(v) => OneCValue.RefGuid(v, ctx) is { } g && g != Guid.Empty.ToString() ? g : "",
-        _ => v.ToString() ?? ""
-    };
-
-    /// <summary>The caller's expected value in the same form: a string, number, boolean, null, or {"id": guid}.</summary>
-    private static string Normal(JsonNode? n) => n switch
-    {
-        null => "",
-        JsonObject o => (o["id"] as JsonValue)?.TryGetValue(out string? g) == true ? g!.ToLowerInvariant() : o.ToJsonString(),
-        JsonValue v when v.TryGetValue(out bool b) => b ? "true" : "false",
-        JsonValue v when v.TryGetValue(out decimal d) => d.ToString("0.############", CultureInfo.InvariantCulture),
-        JsonValue v when v.TryGetValue(out string? s) => DocumentWriteBody.ParseDate(s!) is { } dt && s!.Length >= 10 && s[4] == '-'
-            ? dt.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture) : s!.TrimEnd(),
-        _ => n.ToJsonString()
-    };
-
-    private static string Show(string s) => s.Length == 0 ? "(empty)" : $"'{(s.Length > 80 ? s[..80] + "…" : s)}'";
 }

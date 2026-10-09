@@ -18,3 +18,36 @@
 12:41:14   Sync brought it into Rust after 2.3 s; Rust: (gone)
 12:41:19   verify r9c-cleanup PASS (Rust = 1C)
 12:41:19 R9 catalogs PASS
+01:30:06 === R9 catalogs AIBA_REWRITE_R9C_1009013006
+01:30:10   command catalog.create [r9c-create-1009013006]: state succeeded result {"code":"00-00000016","created":true,"id":"0d651fd2-c357-11f1-b4e8-b42e998ffa17","idempotent":false,"name":"AIBA test item 1009013006","sessionId":3} error 
+01:30:13   Sync brought it into Rust after 2.4 s; Rust: (gone)
+01:30:26   verify r9c-create PASS (Rust = 1C)
+01:30:28   command catalog.create [r9c-create2-1009013006]: state succeeded result {"code":"00-00000016","created":false,"id":"0d651fd2-c357-11f1-b4e8-b42e998ffa17","idempotent":true,"name":"AIBA test item 1009013006","sessionId":3} error 
+01:30:28   idempotent: a new key with the same marker returned the same item
+01:30:28 --- compare-and-set
+01:30:30   command catalog.update [r9c-cas-1009013006]: state succeeded result {"code":"00-00000016","created":false,"id":"0d651fd2-c357-11f1-b4e8-b42e998ffa17","idempotent":false,"name":"AIBA test item 1009013006 (renamed)","sessionId":3} error 
+01:30:33   Sync brought it into Rust after 2.3 s; Rust: (gone)
+01:40:37   verify r9c-cas PASS (Rust = 1C)
+01:40:37 --- a stale compare-and-set is refused and changes nothing
+01:40:38   command catalog.update [r9c-stale-1009013006]: state failed result null error unprocessable/Host: compare-and-set refused: 1 field(s) differ from what the caller expected; nothing written null
+01:40:39   command catalog.update [r9c-foreign-1009013006]: state  refused by Rust: command_refused: expected must name the old values of the fields the caller read (compare-and-set) result null error 
+01:41:20 === R9 catalogs AIBA_REWRITE_R9C_1009014120
+01:41:23   command catalog.create [r9c-create-1009014120]: state succeeded result {"code":"00-00000016","created":true,"id":"9f297316-c358-11f1-b4e8-b42e998ffa17","idempotent":false,"name":"AIBA test item 1009014120","sessionId":1} error 
+01:41:25   Sync brought it into Rust after 2.3 s; Rust: (gone)
+01:41:36   verify r9c-create PASS (Rust = 1C)
+01:41:37   command catalog.create [r9c-create2-1009014120]: state succeeded result {"code":"00-00000016","created":false,"id":"9f297316-c358-11f1-b4e8-b42e998ffa17","idempotent":true,"name":"AIBA test item 1009014120","sessionId":1} error 
+01:41:37   idempotent: a new key with the same marker returned the same item
+01:41:37 --- compare-and-set
+01:41:39   command catalog.update [r9c-cas-1009014120]: state succeeded result {"code":"00-00000016","created":false,"id":"9f297316-c358-11f1-b4e8-b42e998ffa17","idempotent":false,"name":"AIBA test item 1009014120 (renamed)","sessionId":1} error 
+01:41:41   Sync brought it into Rust after 2.3 s; Rust: (gone)
+01:41:52   verify r9c-cas PASS (Rust = 1C)
+01:41:52 --- a stale compare-and-set is refused and changes nothing
+01:41:53   command catalog.update [r9c-stale-1009014120]: state failed result null error unprocessable/Host: compare-and-set refused: 1 field(s) differ from what the caller expected; nothing written null
+01:41:53   command catalog.update [r9c-foreign-1009014120]: state  refused by Rust: command_refused: expected must name the old values of the fields the caller read (compare-and-set) result null error 
+01:41:55   command catalog.create [r9c-bank-1009014120]: state failed result null error unprocessable/Host: Справочник.Банки has no Комментарий: AIBA cannot mark an item there as its own null
+01:42:05   refusals returned with 1C/host reasons; nothing changed
+01:42:05 --- cleanup (owned delete through the local edge)
+01:42:06   1C: {"id":"9f297316-c358-11f1-b4e8-b42e998ffa17","deleted":true}
+01:42:10   Sync brought it into Rust after 4.4 s; Rust: (gone)
+01:42:21   verify r9c-cleanup PASS (Rust = 1C)
+01:42:21 R9 catalogs PASS

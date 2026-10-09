@@ -1,8 +1,8 @@
 {
-  "at": "2026-10-08T08:04:14.9704758Z",
+  "at": "2026-10-08T22:25:26.9257218Z",
   "base": "bilim",
   "connection": "6ac74a64b615f076549ab133",
-  "pass": true,
+  "pass": false,
   "tables": [
     {
       "table": "ChartOfAccounts_Хозрасчетный",
@@ -61,13 +61,15 @@
       "oneCCount": 69,
       "canonical": 69,
       "sent": 69,
-      "backend": 69,
-      "missing": 0,
+      "backend": 68,
+      "missing": 1,
       "extra": 0,
       "wrongPartition": 0,
       "wrongContent": 0,
       "duplicateKeys": 0,
-      "examples": []
+      "examples": [
+        "missing 6ac74a64b615f076549ab133/19921cec-c367-11f1-b4e8-b42e998ffa17"
+      ]
     },
     {
       "table": "Document_РеализацияТоваровУслуг",
@@ -87,13 +89,15 @@
       "oneCCount": 936,
       "canonical": 50,
       "sent": 50,
-      "backend": 50,
-      "missing": 0,
+      "backend": 49,
+      "missing": 1,
       "extra": 0,
       "wrongPartition": 0,
       "wrongContent": 0,
       "duplicateKeys": 0,
-      "examples": []
+      "examples": [
+        "missing 6ac74a64b615f076549ab133/19921cec-c367-11f1-b4e8-b42e998ffa17#1"
+      ]
     },
     {
       "table": "InformationRegister_КурсыВалют",

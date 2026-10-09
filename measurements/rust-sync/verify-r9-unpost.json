@@ -1,7 +1,7 @@
 {
-  "at": "2026-10-08T07:15:24.1547415Z",
-  "base": "bilim",
-  "connection": "13",
+  "at": "2026-10-08T20:28:38.9601127Z",
+  "base": "bilimsrv",
+  "connection": "299",
   "pass": true,
   "tables": [
     {

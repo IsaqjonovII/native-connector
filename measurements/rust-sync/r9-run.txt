@@ -51,3 +51,88 @@
 12:21:54   Sync removed it from Rust after 158.3 s; Rust rows now: ''
 12:27:19   verify r9-cleanup PASS (Rust = 1C)
 12:27:19 R9 PASS
+14:27:16 === R9 round trip AIBA_REWRITE_R9_1008142716
+14:27:16   command document.create [r9-bad-1008142716-noAIBAmarker]: state  result null error null
+14:27:16   refused as expected: no AIBA marker
+14:27:16   command document.create [r9-bad-1008142716-exchange]: state  result null error null
+14:27:16   refused as expected: exchange
+14:27:16   command document.create [r9-bad-1008142716-_postCreateMethod]: state  result null error null
+14:27:16   refused as expected: _postCreateMethod
+14:27:16   command document.delete [r9-bad-1008142716-harddeletekind]: state  result null error null
+14:27:17   refused as expected: hard delete kind
+14:34:19   command document.create [r9-create-1008142716]: state failed result null error {"data":{"fillDiagnostics":[]},"hostFatal":false,"layer":"Validation","message":"another write with marker 'AIBA_REWRITE_R9_1008142716' is still running","oneCCode":0,"retryable":false,"sessionFatal":false}
+14:56:43 === R9 round trip AIBA_REWRITE_R9_1008145643
+14:56:43   command document.create [r9-bad-1008145643-noAIBAmarker]: state  result null error null
+14:56:43   refused as expected: no AIBA marker
+14:56:43   command document.create [r9-bad-1008145643-exchange]: state  result null error null
+14:56:43   refused as expected: exchange
+14:56:43   command document.create [r9-bad-1008145643-_postCreateMethod]: state  result null error null
+14:56:43   refused as expected: _postCreateMethod
+14:56:44   command document.delete [r9-bad-1008145643-harddeletekind]: state  result null error null
+14:56:44   refused as expected: hard delete kind
+15:04:36   command document.create [r9-create-1008145643]: state succeeded result {"created":true,"date":"2025-09-30T23:59:59","document":"ПоступлениеТоваровУслуг","id":"95e38c82-c2ff-11f1-b4e8-b42e998ffa17","idempotent":false,"number":"0000-000069","posted":false,"sessionId":1} error null
+15:04:36   created 95e38c82-c2ff-11f1-b4e8-b42e998ffa17 (posted False)
+15:04:45   Sync brought it into Rust after 8.6 s
+15:04:45   Rust holds: Document_ПоступлениеТоваровУслуг 1 posted=false mark=false
+15:12:42   verify r9-create PASS (Rust = 1C)
+15:12:42   command document.create [r9-create-1008145643]: state succeeded (deduplicated) result {"created":true,"date":"2025-09-30T23:59:59","document":"ПоступлениеТоваровУслуг","id":"95e38c82-c2ff-11f1-b4e8-b42e998ffa17","idempotent":false,"number":"0000-000069","posted":false,"sessionId":1} error null
+15:15:02   command document.create [r9-create2-1008145643]: state succeeded result {"created":false,"date":"2025-09-30T23:59:59","document":"ПоступлениеТоваровУслуг","id":"95e38c82-c2ff-11f1-b4e8-b42e998ffa17","idempotent":true,"number":"0000-000069","posted":false,"sessionId":1} error null
+15:15:02   idempotent: same key = same command; new key, same marker = same 1C document ({"created":false,"date":"2025-09-30T23:59:59","document":"ПоступлениеТоваровУслуг","id":"95e38c82-c2ff-11f1-b4e8-b42e998ffa17","idempotent":true,"number":"0000-000069","posted":false,"sessionId":1})
+15:15:02   command document.create [r9-create-1008145643]: state  result null error null
+15:15:02 --- post
+15:16:28   command document.post [r9-post-1008145643]: state succeeded result {"id":"95e38c82-c2ff-11f1-b4e8-b42e998ffa17","number":"0000-000069","posted":true,"sessionId":1} error null
+15:16:37   Sync brought it into Rust after 8.5 s
+15:16:37   Rust holds: AccountingRegister_Хозрасчетный_RecordType 1 posted=- mark=-; Document_ПоступлениеТоваровУслуг 1 posted=true mark=false
+15:22:16   verify r9-post PASS (Rust = 1C)
+15:22:16 --- update
+15:32:16   command document.update [r9-update-1008145643]: state dispatched result null error null
+01:27:00 === R9 round trip AIBA_REWRITE_R9_1009012700
+01:27:00   command document.create [r9-bad-1009012700-noAIBAmarker]: state  result null error null
+01:27:00   refused as expected: no AIBA marker
+01:27:01   command document.create [r9-bad-1009012700-exchange]: state  result null error null
+01:27:01   refused as expected: exchange
+01:27:01   command document.create [r9-bad-1009012700-_postCreateMethod]: state  result null error null
+01:27:01   refused as expected: _postCreateMethod
+01:27:01   command document.delete [r9-bad-1009012700-harddeletekind]: state  result null error null
+01:27:01   refused as expected: hard delete kind
+01:27:09   command document.create [r9-create-1009012700]: state succeeded result {"created":true,"date":"2025-09-30T23:59:59","document":"ПоступлениеТоваровУслуг","id":"a186034e-c356-11f1-b4e8-b42e998ffa17","idempotent":false,"number":"0000-000069","posted":false,"sessionId":2} error null
+01:27:09   created a186034e-c356-11f1-b4e8-b42e998ffa17 (posted False)
+01:27:11   Sync brought it into Rust after 2.4 s
+01:27:12   Rust holds: Document_ПоступлениеТоваровУслуг 1 posted=false mark=false
+01:27:26   verify r9-create PASS (Rust = 1C)
+01:27:26   command document.create [r9-create-1009012700]: state succeeded (deduplicated) result {"created":true,"date":"2025-09-30T23:59:59","document":"ПоступлениеТоваровУслуг","id":"a186034e-c356-11f1-b4e8-b42e998ffa17","idempotent":false,"number":"0000-000069","posted":false,"sessionId":2} error null
+01:27:27   command document.create [r9-create2-1009012700]: state succeeded result {"created":false,"date":"2025-09-30T23:59:59","document":"ПоступлениеТоваровУслуг","id":"a186034e-c356-11f1-b4e8-b42e998ffa17","idempotent":true,"number":"0000-000069","posted":false,"sessionId":2} error null
+01:27:27   idempotent: same key = same command; new key, same marker = same 1C document ({"created":false,"date":"2025-09-30T23:59:59","document":"ПоступлениеТоваровУслуг","id":"a186034e-c356-11f1-b4e8-b42e998ffa17","idempotent":true,"number":"0000-000069","posted":false,"sessionId":2})
+01:27:28   command document.create [r9-create-1009012700]: state  result null error null
+01:27:28 --- post
+01:27:37   command document.post [r9-post-1009012700]: state succeeded result {"id":"a186034e-c356-11f1-b4e8-b42e998ffa17","number":"0000-000069","posted":true,"sessionId":2} error null
+01:27:42   Sync brought it into Rust after 4.6 s
+01:27:42   Rust holds: AccountingRegister_Хозрасчетный_RecordType 1 posted=- mark=-; Document_ПоступлениеТоваровУслуг 1 posted=true mark=false
+01:27:54   verify r9-post PASS (Rust = 1C)
+01:27:54 --- update
+01:27:59   command document.update [r9-update-1009012700]: state succeeded result {"autoUnposted":false,"id":"a186034e-c356-11f1-b4e8-b42e998ffa17","posted":true,"reposted":true,"sessionId":2,"updated":true} error null
+01:28:02   Sync brought it into Rust after 2.9 s
+01:28:02   Rust holds: AccountingRegister_Хозрасчетный_RecordType 1 posted=- mark=-; Document_ПоступлениеТоваровУслуг 1 posted=true mark=false
+01:28:20   verify r9-update PASS (Rust = 1C)
+01:28:20 --- unpost
+01:28:22   command document.unpost [r9-unpost-1009012700]: state succeeded result {"id":"a186034e-c356-11f1-b4e8-b42e998ffa17","unposted":true} error null
+01:28:27   Sync brought it into Rust after 4.7 s
+01:28:27   Rust holds: Document_ПоступлениеТоваровУслуг 1 posted=false mark=false
+01:28:41   verify r9-unpost PASS (Rust = 1C)
+01:28:41 --- repost
+01:28:44   command document.post [r9-repost-1009012700]: state succeeded result {"id":"a186034e-c356-11f1-b4e8-b42e998ffa17","number":"0000-000069","posted":true,"sessionId":2} error null
+01:28:47   Sync brought it into Rust after 2.4 s
+01:28:47   Rust holds: AccountingRegister_Хозрасчетный_RecordType 1 posted=- mark=-; Document_ПоступлениеТоваровУслуг 1 posted=true mark=false
+01:28:57   verify r9-repost PASS (Rust = 1C)
+01:28:57 --- markdel
+01:29:13   command document.markDeleted [r9-markdel-1009012700]: state succeeded result {"kind":"MarkDeleted","number":"0000-000069","ref":"a186034e-c356-11f1-b4e8-b42e998ffa17","sessionId":2} error null
+01:29:17   Sync brought it into Rust after 4.4 s
+01:29:17   Rust holds: Document_ПоступлениеТоваровУслуг 1 posted=false mark=true
+01:29:28   verify r9-markdel PASS (Rust = 1C)
+01:29:31   command document.markDeleted [r9-foreign-1009012700]: state failed result null error {"base":"bilimsrv","category":"unknown","hostFatal":false,"hr":"0x00000000","kind":"forbidden","layer":"Host","member":"ПоступлениеТоваровУслуг","message":"refused: ПоступлениеТоваровУслуг 0ba40f8c-4519-11f0-bc18-00155de37007 was not created by AIBA (comment does not start with 'AIBA_')","oneCCode":0,"op":"MarkForDeletion","platformVersion":"8.3.15.1565","retryable":false,"scode":"0x00000000","sessionFatal":false}
+01:29:33   command document.update [r9-baddate-1009012700]: state failed result null error {"data":{"fillDiagnostics":[{"code":"invalid_date","field":"Дата","level":"ERROR","message":"'not-a-date' is not yyyy-MM-dd[THH:mm:ss]"}]},"hostFatal":false,"kind":"unprocessable","layer":"Host","message":"1 value(s) could not be used: Дата: 'not-a-date' is not yyyy-MM-dd[THH:mm:ss]","oneCCode":0,"retryable":false,"sessionFatal":false}
+01:29:43   errors returned as 1C/host gave them; foreign document unchanged
+01:29:55   Sync brought it into Rust after 8.7 s
+01:29:55   Rust holds: 
+01:30:06   verify r9-cleanup PASS (Rust = 1C)
+01:30:06 R9 PASS

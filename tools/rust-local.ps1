@@ -10,11 +10,12 @@ $HostExe  = Join-Path $Repo 'src\OneC.Host\bin\Release\net9.0\OneC.Host.exe'
 $DevBench = Join-Path $Repo 'research\sync-spikes\DevBench\bin\Debug\net9.0\DevBench.exe'
 $Secrets  = Join-Path $RustData 'rust-secrets.json'
 $Psql     = 'C:\Program Files\PostgreSQL 1C\12\bin\psql.exe'
-$Port     = 57751
+$Port     = if ($env:R9_EDGE_PORT) { [int]$env:R9_EDGE_PORT } else { 57751 }   # R9_*: a second Supervisor (e.g. bilimsrv on 57752)
 New-Item -ItemType Directory -Force $Work, $Out | Out-Null
 if (-not (Test-Path "$Work\edge-token.txt")) { [guid]::NewGuid().ToString('N') | Set-Content "$Work\edge-token.txt" }   # local edge only
 $EdgeToken = (Get-Content "$Work\edge-token.txt").Trim()
-$Bases = "$Work\bases.json"
+$Bases = if ($env:R9_BASES) { $env:R9_BASES } else { "$Work\bases.json" }
+$SyncConfig = if ($env:R9_SYNC_CONFIG) { $env:R9_SYNC_CONFIG } else { "$Work\sync.json" }
 $RustUrl = (Get-Content $Secrets -Raw | ConvertFrom-Json).url
 
 function New-RustBases([string]$Name = 'bilim') {
@@ -82,7 +83,7 @@ function Wait-Idle([int]$TimeoutSec = 1800) {
 
 # Every stored row read back from Rust and compared with a fresh 1C read (never a count). Run while idle.
 function Verify([string]$Tag) {
-    & $Sup sync-verify --bases $Bases --sync-config "$Work\sync.json" --host $HostExe --report "$Out\verify-$Tag.json" 2>&1 | Tee-Object "$Out\verify-$Tag.txt"
+    & $Sup sync-verify --bases $Bases --sync-config $SyncConfig --host $HostExe --report "$Out\verify-$Tag.json" 2>&1 | Tee-Object "$Out\verify-$Tag.txt"
     if ($LASTEXITCODE -ne 0) { throw "verify $Tag FAILED (exit $LASTEXITCODE) — see $Out\verify-$Tag.txt" }
 }
 

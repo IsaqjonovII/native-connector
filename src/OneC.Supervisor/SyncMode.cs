@@ -101,7 +101,11 @@ internal static class SyncMode
             };
         var host = new SyncEngineHost(db, target, new SupervisorReader(sup), plans,
                                       options: new EngineOptions { AllowWithOldConnector = (bool?)cfg["allowWithOldConnector"] ?? false })
-        { RebuildRefusal = RebuildRefusal };
+        {
+            RebuildRefusal = RebuildRefusal,
+            // Rust only: its status route marks the base online; other targets keep their behaviour.
+            ReportStatusEvery = targetSpec.StartsWith(RustBackend.Scheme, StringComparison.Ordinal) ? TimeSpan.FromSeconds(60) : null
+        };
         host.Start();
         return (host, db);
     }

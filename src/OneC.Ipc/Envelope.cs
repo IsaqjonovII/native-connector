@@ -25,6 +25,8 @@ public static class Ops
     public const string Recorders = "recorders";
     /// <summary>Sync:which document type a recorder GUID belongs to, among registers' recorder types.</summary>
     public const string RecorderOf = "recorderOf";
+    /// <summary>Sync:the synced objects and recorders whose stored rows show a catalog item's name (its GUID in a typed column), within each table's window.</summary>
+    public const string Referrers = "referrers";
     /// <summary>Sync:every catalog, document, chart of accounts and register of the configuration.</summary>
     public const string Tables = "tables";
     public const string Create = "create";

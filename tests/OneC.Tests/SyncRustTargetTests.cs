@@ -301,4 +301,52 @@ public sealed class SyncRustTargetTests
         Assert.Equal((Outcome.Ok, 1500), (r.Outcome, r.Applied));
         Assert.Equal(1500, (await StoredAsync(l, l.Connection, Cat)).Count);
     }
+
+    [Fact]
+    public async Task TheStatusHeartbeatPutsTheBaseAndItsBindingsOnlineAndStopTakesThemOff()
+    {
+        if (await ConnectAsync() is not { } l) return;
+        var (_, partA, _, partB) = await BindTwoOrgsAsync(l);
+        async Task<string?> StatusOf(string id)
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, $"api/internal/admin/onecs/{id}");
+            req.Headers.Add("X-Service-Secret", l.Service);
+            var resp = await l.Http.SendAsync(req);
+            string text = await resp.Content.ReadAsStringAsync();
+            Assert.True(resp.IsSuccessStatusCode, text);
+            return (string?)JsonNode.Parse(text)!["status"];
+        }
+        Assert.True((await l.Target.ReportStatusAsync(new BaseStatus(l.Connection, "active", null, null, null), Ct)).Ok);
+        foreach (var id in new[] { l.Connection, partA, partB }) Assert.Equal("active", await StatusOf(id));
+        Assert.True((await l.Target.ReportStatusAsync(new BaseStatus(l.Connection, "stopped", null, null, null), Ct)).Ok);
+        foreach (var id in new[] { l.Connection, partA, partB }) Assert.Equal("inactive", await StatusOf(id));
+    }
+
+    [Fact]
+    public async Task OnlyTheHolderOfTheCurrentLeaseReportsACommandsOutcome()
+    {
+        if (await ConnectAsync() is not { } l) return;
+        var payload = new JsonObject { ["docType"] = "ПоступлениеТоваровУслуг", ["ref"] = G() };
+        var (e, id, _) = await l.Target.EnqueueCommandAsync("document.post", "lease-" + B(), l.Connection, payload, Ct);
+        Assert.True(e.Ok, e.Message);
+        var first = Assert.Single(await l.Target.LeaseCommandsAsync(1, 30, Ct));
+        Assert.Equal(id, first.CommandId);
+        Assert.Matches("^[0-9a-f]{64}$", first.LeaseToken);
+
+        // Anyone else with access to the connection: no token, a made-up one — refused, nothing changes.
+        foreach (var token in new[] { "", new string('0', 64) })
+        {
+            var forged = await l.Target.ReportCommandAsync(first with { LeaseToken = token }, true, new JsonObject { ["posted"] = true }, null, Ct);
+            Assert.False(forged.Ok);
+            Assert.Contains("lease_not_held", forged.Message);
+        }
+        Assert.Equal("dispatched", (string?)(await l.Target.GetCommandAsync(id!, Ct))!["state"]);
+
+        // The holder reports; the same report again is a replay; a forged one after it is still refused.
+        var ok = await l.Target.ReportCommandAsync(first, false, null, new JsonObject { ["message"] = "test" }, Ct);
+        Assert.True(ok.Ok, ok.Message);
+        Assert.True((await l.Target.ReportCommandAsync(first, false, null, new JsonObject { ["message"] = "test" }, Ct)).Ok);
+        Assert.False((await l.Target.ReportCommandAsync(first with { LeaseToken = new string('1', 64) }, false, null, null, Ct)).Ok);
+        Assert.Equal("failed", (string?)(await l.Target.GetCommandAsync(id!, Ct))!["state"]);
+    }
 }

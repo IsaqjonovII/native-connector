@@ -149,6 +149,52 @@ public sealed class SyncRustSecurityTests
         await Assert.ThrowsAsync<InvalidOperationException>(async () => { await foreach (var _ in ali.ReadRowsAsync(pTheirs, Doc, ct: Ct)) { } });
     }
 
+    /// <summary>
+    /// P-1b (2026-10-09): a user token proves the user may SEE a company, not that they may write to its 1C.
+    /// Creating a 1C write is the service's alone (aiba-next checks the per-action permission first);
+    /// leasing and reporting — the Connector, which signs in as a user — only reach that user's partitions.
+    /// </summary>
+    [Fact]
+    public async Task OnlyTheServiceCreatesA1CWriteAndAUserTouchesOnlyCommandsOfTheirPartitions()
+    {
+        if (Load() is not { } e) return;
+        var http = Http(e.Url);
+        string conn = await CreateConnectionAsync(http, e.Service, 6001);
+        string orgMine = G(), orgTheirs = G();
+        var parts = await BindAsync(http, e.Service, conn, (orgMine, 6004), (orgTheirs, 6002));
+        string pMine = parts.Single(p => p.OrgRef == orgMine).PartitionId, pTheirs = parts.Single(p => p.OrgRef == orgTheirs).PartitionId;
+        JsonObject Post() => new() { ["docType"] = "ПоступлениеТоваровУслуг", ["ref"] = G() };
+        var service = new RustSyncTarget(http, new ServiceSecretCredential(e.Service), conn);
+
+        // Any user, the tenant admin included, with a valid token and access to the company: refused, nothing stored.
+        foreach (var token in new[] { Token(e.Jwt, "ali", e.Tenant), Token(e.Jwt, "boss", e.Tenant, "tenant_admin") })
+        {
+            var (r, id, _) = await AsUser(http, token, conn).EnqueueCommandAsync("document.post", "user-" + B(), pMine, Post(), Ct);
+            Assert.False(r.Ok);
+            Assert.Contains("commands_service_only", r.Message);
+            Assert.Null(id);
+        }
+        Assert.Empty(await service.LeaseCommandsAsync(10, 30, Ct));                  // nothing was queued by them
+
+        // The service creates writes for both organisations.
+        var (a, idMine, _) = await service.EnqueueCommandAsync("document.post", "svc-" + B(), pMine, Post(), Ct);
+        var (b, idTheirs, _) = await service.EnqueueCommandAsync("document.post", "svc-" + B(), pTheirs, Post(), Ct);
+        Assert.True(a.Ok && b.Ok, a.Message + " " + b.Message);
+
+        // A user (ali: companies 6001, 6004) leases only commands of partitions of their companies…
+        var ali = AsUser(http, Token(e.Jwt, "ali", e.Tenant), conn);
+        var leased = await ali.LeaseCommandsAsync(10, 30, Ct);
+        Assert.Equal(new[] { idMine }, leased.Select(c => c.CommandId));
+        // …and cannot report the other one even holding its lease token.
+        var theirs = Assert.Single(await service.LeaseCommandsAsync(10, 30, Ct));
+        Assert.Equal(idTheirs, theirs.CommandId);
+        var forged = await ali.ReportCommandAsync(theirs, true, new JsonObject { ["posted"] = true }, null, Ct);
+        Assert.False(forged.Ok);
+        Assert.Contains("command_not_found", forged.Message);
+        Assert.True((await service.ReportCommandAsync(theirs, false, null, new JsonObject { ["message"] = "test" }, Ct)).Ok);
+        Assert.True((await ali.ReportCommandAsync(leased[0], false, null, new JsonObject { ["message"] = "test" }, Ct)).Ok);
+    }
+
     [Fact]
     public async Task EveryAuthFailureLooksTheSameAndSaysNothing()
     {

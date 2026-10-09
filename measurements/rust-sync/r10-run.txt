@@ -20,3 +20,23 @@
 13:05:23   verify r10-rust-after-cleanup PASS
 13:05:23   binding now: {"active":{"identity":"rust:http://127.0.0.1:18112|13","db":"C:\\Users\\Sanjar Barakayev\\AppData\\Local\\AIBA-rust-sync-test\\sync\\sync-bilim.db","since":"2026-10-08T13:04:15.8973283+05:00"},"previous":{"identity":"http://127.0.0.1:18041|6ac74a64b615f076549ab133","db":"C:\\Users\\Sanjar Barakayev\\AppData\\Local\\AIBA-rust-sync-test\\sync\\sync-bilim-python.db","since":"2026-10-08T13:02:59.1096175+05:00"}}
 13:05:23 R10 PASS
+03:24:48 === R10 per-base switch (local only)
+03:24:48 --- A: bilim on Rust (binding recorded)
+03:24:49   binding: rust:http://127.0.0.1:18112|13
+03:24:49 --- B: the other backend without "switch" is refused
+03:24:52   refused: supervisor exited (-532462766): Unhandled exception. OneC.Supervisor.TargetBinding+RefusedException: bilim syncs into rust:http://127.0.0.1:18112|13 (since 2026-10-08 08:04); this run names http://127.0.0.1:18041|6ac74a64b615f076549ab133. One backend per base: moving it needs "switch": true (R10).
+03:24:52 --- C: explicit switch to the isolated backend/1c
+03:24:53   first copy into backend/1c done in 0 s
+03:24:59   verify r10-python-after-switch PASS (backend/1c = 1C)
+03:24:59 --- D: a 1C change while bilim is on Python
+03:25:02   created + posted 19921cec-c367-11f1-b4e8-b42e998ffa17 in 1C
+03:26:17   verify r10-python-after-change-recheck2 PASS (backend/1c has the change; the first check raced the event-log poll)
+03:26:17   Rust rows for the change made on Python (must be 0): 0 rows
+03:26:18 --- E: rollback to Rust
+03:26:21   Rust caught up the change made on Python after 2.2 s: 
+03:26:26   verify r10-rust-after-rollback PASS (Rust = 1C)
+03:26:26   Rust coverage: AccountingRegister_Хозрасчетный_RecordType=false/2025-08-01, Document_ПоступлениеТоваровУслуг=true/whole, Document_РеализацияТоваровУслуг=true/whole, InformationRegister_КурсыВалют=true/whole
+03:26:26 --- F: cleanup
+03:27:26   verify r10-rust-after-cleanup PASS
+03:27:26   binding now: {"active":{"identity":"rust:http://127.0.0.1:18112|13","db":"C:\\Users\\Sanjar Barakayev\\AppData\\Local\\AIBA-rust-sync-test\\sync\\sync-bilim.db","since":"2026-10-09T03:26:18.4992042+05:00"},"previous":{"identity":"http://127.0.0.1:18041|6ac74a64b615f076549ab133","db":"C:\\Users\\Sanjar Barakayev\\AppData\\Local\\AIBA-rust-sync-test\\sync\\sync-bilim-python.db","since":"2026-10-09T03:24:53.0301989+05:00"}}
+03:27:26 R10 PASS

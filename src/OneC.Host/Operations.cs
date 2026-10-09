@@ -23,6 +23,7 @@ public sealed class Operations
     private readonly VersionReadService _versions;
     private readonly ChartReadService _charts;
     private readonly RecorderMetadata _recorders;
+    private readonly ReferrerSearch _referrers;
     private readonly TableCatalog _tables;
     private readonly WriteService _writes;
     private readonly DocumentWriter _documentWriter;
@@ -40,6 +41,7 @@ public sealed class Operations
         _versions = new VersionReadService(m);
         _charts = new ChartReadService(m);
         _recorders = new RecorderMetadata(m);
+        _referrers = new ReferrerSearch(m);
         _tables = new TableCatalog(m);
         _writes = new WriteService(m, writePrefix);
         _documentWriter = new DocumentWriter(_writes);
@@ -69,6 +71,10 @@ public sealed class Operations
         catch (OneCException oe)
         {
             return IpcResponse.Failure(req.Id, FromOneC(oe), sw.ElapsedMilliseconds);
+        }
+        catch (WriteRejected wr) when (wr.InFlight)
+        {
+            return IpcResponse.Failure(req.Id, IpcError.Of(Layers.Busy, wr.Message, retryable: true), sw.ElapsedMilliseconds);
         }
         catch (WriteRejected wr)
         {
@@ -128,6 +134,7 @@ public sealed class Operations
                 type = _recorders.RecorderOf(Base(r), (a["registers"] as JsonArray ?? throw new ArgumentException("'registers' missing"))
                     .Select(n => (Kind(n!["kind"]!.GetValue<string>()), n["register"]!.GetValue<string>())).ToList(), Str(a, "id"), ct)
             }),
+            Ops.Referrers => ReferrersOp(r, a, ct),
             Ops.Tables => IpcJson.ToNode(new
             {
                 tables = a["details"] is JsonArray d
@@ -285,6 +292,15 @@ public sealed class Operations
         return IpcJson.ToNode(new { rows = page.Rows, totalCount = page.TotalCount, hasMore = page.HasMore, sessionId = page.SessionId });
     }
 
+    /// <summary><c>catalog, id, targets[{kind, name, from}], limit</c> → <c>hits[{kind, name, id}], truncated</c>.</summary>
+    private JsonNode? ReferrersOp(IpcRequest r, JsonObject a, CancellationToken ct)
+    {
+        var targets = (a["targets"] as JsonArray ?? throw new ArgumentException("'targets' missing"))
+            .OfType<JsonObject>().Select(t => new ReferrerSearch.Target(Str(t, "kind"), Str(t, "name"), OptDate(t, "from"))).ToList();
+        var (hits, truncated) = _referrers.Find(Base(r), Str(a, "catalog"), Str(a, "id"), targets, a["limit"]?.GetValue<int>() ?? 50_000, ct);
+        return IpcJson.ToNode(new { hits = hits.Select(h => new { kind = h.Kind, name = h.Name, id = h.Id }), truncated });
+    }
+
     /// <summary>Register rows in the old adapter's shape (D34); kind = information | accumulation | accounting.</summary>
     private static RegisterKind Kind(string kind) => kind switch
     {
@@ -386,7 +402,8 @@ public sealed class Operations
             throw new ArgumentException("exchange=true is not supported (D38)");
         var fields = a["fields"] as JsonObject ?? throw new ArgumentException("'fields' must be an object of the attributes to change");
         var u = _documentWriter.Update(Base(r), Str(a, "docType"), Str(a, "ref"), fields,
-                                       a["post"]?.GetValue<bool>(), a["autoUnpost"]?.GetValue<bool>() ?? false, ct);
+                                       a["post"]?.GetValue<bool>(), a["autoUnpost"]?.GetValue<bool>() ?? false, ct,
+                                       a["expected"] as JsonObject, a["expectedVersion"]?.GetValue<string>());
         return IpcJson.ToNode(new
         {
             id = u.Id, updated = true, posted = u.Posted,

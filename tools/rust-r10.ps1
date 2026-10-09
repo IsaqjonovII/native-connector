@@ -46,9 +46,14 @@ Say '--- D: a 1C change while bilim is on Python'
 $stamp = Get-Date -Format MMddHHmmss
 $body = Get-Content "$Work\ptu-body.json" -Raw | ConvertFrom-Json -AsHashtable
 $body['Комментарий'] = "AIBA_REWRITE_R10_${stamp}: switch test"; $body['_idempotencyMarker'] = "AIBA_REWRITE_R10_$stamp"
+$seen = (Status).lastEventAt
 $created = EdgeWrite POST ('/v1/bases/bilim/documents/' + [Uri]::EscapeDataString($DocType) + '?post=true') ($body | ConvertTo-Json -Depth 20) | ConvertFrom-Json
 $ref = $created.id.ToLower(); Say "  created + posted $ref in 1C"
-Start-Sleep 20; Wait-Idle 1800 | Out-Null
+# An idle base reads its event log about once a minute: wait until Sync has read this write, not a fixed time
+# (2026-10-09: 20 s + idle passed before the event was read — a test race, the change arrived ~70 s later).
+$sw = [Diagnostics.Stopwatch]::StartNew()
+while ((Status).lastEventAt -eq $seen -and $sw.Elapsed.TotalMinutes -lt 20) { Start-Sleep 2 }
+Wait-Idle 1800 | Out-Null
 Verify 'r10-python-after-change'; Say '  verify r10-python-after-change PASS (backend/1c has the change)'
 $rustDuring = RustState
 if ($rustDuring -ne $rustBefore) { Say "  FAIL: Rust was written while bilim was on Python ($rustBefore → $rustDuring)"; throw 'two backends' }

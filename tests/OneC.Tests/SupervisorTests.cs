@@ -247,11 +247,34 @@ public class SupervisorLiveTests
         Assert.Equal(401, (int)noToken.StatusCode);
 
         http.DefaultRequestHeaders.Add("X-AIBA-Token", edge.Token);
-        var refused = await http.PatchAsJsonAsync($"/v1/bases/{b}/documents/{Doc}/{foreign}",
+        // D53 (2026-10-08) replaced D18's blanket refusal: a customer document changes only by
+        // compare-and-set, never takes the AIBA marker, and is never deleted. Every refusal is
+        // decided before anything is written.
+        string Version() => _f.Manager!.Use(b, ctx =>
+        {
+            using var scope = new ComScope();
+            var q = scope.Track(Dispatch.Call(ctx.Connection, "NewObject", ctx.Error, "Запрос"), "Запрос");
+            Dispatch.Set(q, "Текст", $"ВЫБРАТЬ ВерсияДанных ИЗ Документ.{Doc} ГДЕ Ссылка = &r", ctx.Error);
+            var manager = scope.Track(Dispatch.Get(scope.Track(Dispatch.Get(ctx.Connection, "Документы", ctx.Error), "Документы"), Doc, ctx.Error), "mgr");
+            var uuid = scope.Track(Dispatch.Call(ctx.Connection, "NewObject", ctx.Error, "УникальныйИдентификатор", foreign), "uuid");
+            var r = scope.Track(Dispatch.Call(manager, "ПолучитьСсылку", ctx.Error, uuid), "ref");
+            Dispatch.Call(q, "УстановитьПараметр", ctx.Error, "r", r);                // a procedure: returns nothing
+            var cur = scope.Track(Dispatch.Call(scope.Track(Dispatch.Call(q, "Выполнить", ctx.Error), "res"), "Выбрать", ctx.Error), "cur");
+            Assert.True(Dispatch.CallBool(cur, "Следующий", ctx.Error));
+            return (string)Dispatch.Get(cur, "ВерсияДанных", ctx.Error)!;
+        });
+        string before = Version();
+        var claim = await http.PatchAsJsonAsync($"/v1/bases/{b}/documents/{Doc}/{foreign}",
             new JsonObject { ["fields"] = new JsonObject { ["Комментарий"] = "AIBA_X" } });
-        Assert.Equal(403, (int)refused.StatusCode);
+        Assert.Equal(400, (int)claim.StatusCode);                                     // the AIBA marker on a customer document
+        Assert.Contains("must not take an AIBA marker", await claim.Content.ReadAsStringAsync());
+        var blind = await http.PatchAsJsonAsync($"/v1/bases/{b}/documents/{Doc}/{foreign}",
+            new JsonObject { ["fields"] = new JsonObject { ["Комментарий"] = "blind update" } });
+        Assert.Equal(422, (int)blind.StatusCode);                                     // no compare-and-set
+        Assert.Contains("expected_state_required", await blind.Content.ReadAsStringAsync());
         var del = await http.DeleteAsync($"/v1/bases/{b}/documents/{Doc}/{foreign}");
         Assert.Equal(403, (int)del.StatusCode);
+        Assert.Equal(before, Version());                                              // nothing was written
     }
 
     /// <summary>

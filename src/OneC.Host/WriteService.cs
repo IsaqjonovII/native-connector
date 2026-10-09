@@ -86,7 +86,8 @@ public sealed class WriteService
     }
 
     /// <summary>
-    /// Posts (проводит) an owned document; an already posted one is posted again, as before
+    /// Posts (проводит) a document by exact type and ref — a customer-created one too (D53: posting an
+    /// existing document is a normal operation); an already posted one is posted again, as before
     /// (main.os:17431) — without the old path's fill steps and draft-write retry (D38).
     /// K=1 per base, see DECISIONS D12.
     /// </summary>
@@ -96,20 +97,23 @@ public sealed class WriteService
         return Gated(baseName, WriteKind.Post, ct, ctx =>
         {
             using var scope = new ComScope();
-            var obj = LoadOwned(ctx, scope, docType, refGuid, "Post");
+            var obj = LoadByRef(ctx, scope, docType, refGuid, "Post");
             DocumentWriter.WriteObject(ctx, obj, docType, "Проведение", new List<WriteDiagnostic>());
             return Result(ctx, scope, docType, obj, WriteKind.Post);
         });
     }
 
-    /// <summary>Clears the posting of an owned document (main.os:17563).</summary>
+    /// <summary>
+    /// Clears the posting of a document by exact type and ref, customer-created too (D53; main.os:17563).
+    /// Destructive for the books: a separate operation (and command kind) so it can be authorized apart.
+    /// </summary>
     public WriteResult Unpost(string baseName, string docType, string refGuid, CancellationToken ct = default)
     {
         ReadService.ValidateIdentifier(docType, nameof(docType));
         return Gated(baseName, WriteKind.Post, ct, ctx =>
         {
             using var scope = new ComScope();
-            var obj = LoadOwned(ctx, scope, docType, refGuid, "Unpost");
+            var obj = LoadByRef(ctx, scope, docType, refGuid, "Unpost");
             DocumentWriter.WriteObject(ctx, obj, docType, "ОтменаПроведения", new List<WriteDiagnostic>());
             return Result(ctx, scope, docType, obj, WriteKind.Post);
         });
@@ -214,8 +218,24 @@ public sealed class WriteService
         return scope.Track(Dispatch.Get(cur, "Ссылка", ctx.Error), "Ссылка");
     }
 
-    /// <summary>Loads a document object by GUID and refuses it unless AIBA created it.</summary>
+    /// <summary>Loads a document object by GUID and refuses it unless AIBA created it (deletion mark, delete, untyped update).</summary>
     internal object LoadOwned(SessionContext ctx, ComScope scope, string docType, string refGuid, string op)
+    {
+        var obj = LoadByRef(ctx, scope, docType, refGuid, op);
+        if (!IsOwned(ctx, obj))
+            throw OneCException.Host(
+                $"refused: {docType} {refGuid} was not created by AIBA (comment does not start with '{CommentPrefix}')",
+                ctx.Error, op, docType);
+        return obj;
+    }
+
+    /// <summary>Its Комментарий starts with the host's AIBA prefix.</summary>
+    internal bool IsOwned(SessionContext ctx, object obj) =>
+        (Dispatch.HasMember(obj, "Комментарий") ? Dispatch.GetString(obj, "Комментарий", ctx.Error) ?? "" : "")
+            .StartsWith(CommentPrefix, StringComparison.Ordinal);
+
+    /// <summary>Loads a document object by exact type and GUID, whoever created it (D53: post, unpost, typed update).</summary>
+    internal object LoadByRef(SessionContext ctx, ComScope scope, string docType, string refGuid, string op)
     {
         if (!Guid.TryParse(refGuid, out _))
             throw new ArgumentException($"'{refGuid}' is not a GUID", nameof(refGuid));
@@ -231,12 +251,6 @@ public sealed class WriteService
         if (obj is null || !Marshal.IsComObject(obj))
             throw OneCException.Host($"{docType} {refGuid} not found", ctx.Error, op, docType);
         scope.Add(obj, "object");
-
-        string comment = Dispatch.GetString(obj, "Комментарий", ctx.Error) ?? "";
-        if (!comment.StartsWith(CommentPrefix, StringComparison.Ordinal))
-            throw OneCException.Host(
-                $"refused: {docType} {refGuid} was not created by AIBA (comment does not start with '{CommentPrefix}')",
-                ctx.Error, op, docType);
         return obj;
     }
 

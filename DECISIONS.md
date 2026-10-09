@@ -1080,3 +1080,48 @@ switch; each backend keeps its own sync state, so a switch copies in full and a 
 own cursor. Every activation also sends the final data coverage of a copied table that never had one, so a
 base copied before coverage existed never reads as "whole history". Production stays closed until the
 developer approves (D-2).
+
+## D53 — Write ownership is per operation; pulled commands are a temporary transport (2026-10-08)
+
+**Decision (developer, 2026-10-08).** No blanket "AIBA-created objects only" rule (replaces D18's blanket
+refusal):
+
+| Operation | Rule |
+|---|---|
+| create document | AIBA idempotency marker required (unchanged) |
+| post existing document | allowed on customer-created documents, by exact type + ref |
+| unpost existing document | allowed by exact type + ref; a separate command kind (`document.unpost`), so it can be authorized apart as destructive |
+| update existing document | typed update contract only (header fields, no tabular sections, no arbitrary mutation); an AIBA document as before, a customer document only by compare-and-set (`expected` field values and/or `expectedVersion` = ВерсияДанных); its Комментарий can never take the AIBA marker, an AIBA document's never loses it |
+| catalog compare-and-set update | allowed on customer-created items (core use case), exact ref, `expected` old values REQUIRED; a difference refuses without writing |
+| catalog create | AIBA marker + idempotency (unchanged) |
+| mark for deletion | AIBA-owned only, until a known normal workflow needs more |
+| hard delete | not a backend operation (local edge test cleanup only) |
+| `_postCreateMethod`, procedures, `exchange=true` | forbidden |
+
+**Transport.** The Supervisor polling the Rust command table is the transport for THIS phase only, not the
+final architecture. The command model — id, payload, status, result, idempotency key, lease, retry — does not
+depend on polling; a future push channel only wakes the runner / delivers the same command rows. No WebSocket,
+presence or control plane now. **Production stays closed.**
+
+## D54 — Renames are followed by identity; 1C writes are created by the service only (2026-10-09)
+
+**Reference names (release blocker, F-reference-presentation-staleness).** Rows keep the old adapter's
+shape: a reference is its display name (D33 compatibility; sotuv, recon, match-index, payroll key on those
+names). A catalog rename changes what other rows show without changing them in 1C, so the engine follows the
+item's IDENTITY: it keeps a hash of each catalog item's shown name (name, else code); when it changes, the
+Host asks 1C once which synced objects reference that GUID (`ReferrerSearch`: per table, only columns whose
+type can hold the item, inside the table's window) and only those are re-read — documents as recorder items
+(their movements follow), catalogs forced past the unchanged-version skip. No rescan of every document, no
+backend scan, no row-shape change. Not covered (recorded): charts of accounts (refreshed whole), independent
+registers (refreshed whole), accounting-register dimensions other than subconto, document→document references.
+The stable-GUID option (`<Field>_Key` next to the name) stays the long-term direction once consumers move.
+
+**Command creation (release blocker P-1b).** `POST …/commands` is SERVICE-only; a user token — any role,
+tenant admin included — gets 403 `commands_service_only`. A user token proves the user may SEE a company
+(`user_company_ids` counts a viewer grant too), not that they may write to its 1C; per-action permissions
+(`avtoprovodka.edit`, `avtoprovodka.delete`, custom roles in the control DB) are resolved by aiba-next, which
+then calls the module with the service secret. Leasing and reporting stay open to the Connector (it signs in
+as a user) but only for the user's own partitions, and reporting needs the lease token. A single-tenant module
+that does not know its tenant (`ONEC_TENANT_SLUG` / `TENANT_SLUG`) refuses user tokens. **Open decision:** is
+`avtoprovodka.edit` the permission for create/update/post/catalog writes and `avtoprovodka.delete` the one for
+unpost/markDeleted (the code precedent), or do unpost/markDeleted stay service-internal in v1?

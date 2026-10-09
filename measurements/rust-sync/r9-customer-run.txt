@@ -1,0 +1,90 @@
+14:08:38 === R9 customer-owned objects (D53) 1008140838
+14:08:39   customer document 0ba40f8c-4519-11f0-bc18-00155de37007 (comment ''), customer item 1bb4fb81-21a1-11f0-bbbe-00155de37007 ('Консалтинговые услуги')
+14:08:39 --- post an existing customer document (repost: same movements)
+14:08:58   command document.post [r9u-post-1008140838]: state succeeded result {"id":"0ba40f8c-4519-11f0-bc18-00155de37007","number":"0000-000041","posted":true,"sessionId":1} error 
+14:09:03   verify r9u-post PASS (Rust = 1C)
+14:09:03 --- unpost it, then post it back
+14:09:05   command document.unpost [r9u-unpost-1008140838]: state succeeded result {"id":"0ba40f8c-4519-11f0-bc18-00155de37007","unposted":true} error 
+14:09:27   Sync brought it into Rust after 21.3 s
+14:09:32   verify r9u-unpost PASS (Rust = 1C)
+14:09:34   command document.post [r9u-repost-1008140838]: state succeeded result {"id":"0ba40f8c-4519-11f0-bc18-00155de37007","number":"0000-000041","posted":true,"sessionId":1} error 
+14:09:36   Sync brought it into Rust after 2.3 s
+14:13:25 === R9 customer-owned objects (D53) 1008141325
+14:13:26   customer document 0ba40f8c-4519-11f0-bc18-00155de37007 (comment ''), customer item 1bb4fb81-21a1-11f0-bbbe-00155de37007 ('Консалтинговые услуги')
+14:13:26 --- post an existing customer document (repost: same movements)
+14:13:32   command document.post [r9u-post-1008141325]: state succeeded result {"id":"0ba40f8c-4519-11f0-bc18-00155de37007","number":"0000-000041","posted":true,"sessionId":1} error 
+14:14:33 === R9 customer-owned objects (D53) 1008141433
+14:14:33   customer document 0ba40f8c-4519-11f0-bc18-00155de37007 (comment ''), customer item 1bb4fb81-21a1-11f0-bbbe-00155de37007 ('Консалтинговые услуги')
+14:14:33 --- post an existing customer document (repost: same movements)
+14:14:35   command document.post [r9u-post-1008141433]: state succeeded result {"id":"0ba40f8c-4519-11f0-bc18-00155de37007","number":"0000-000041","posted":true,"sessionId":1} error 
+14:14:37   Sync saw the post after 2 s
+14:14:42   verify r9u-post PASS (Rust = 1C)
+14:14:42 --- unpost it, then post it back
+14:14:43   command document.unpost [r9u-unpost-1008141433]: state succeeded result {"id":"0ba40f8c-4519-11f0-bc18-00155de37007","unposted":true} error 
+14:14:47   Sync brought it into Rust after 4.4 s
+14:14:52   verify r9u-unpost PASS (Rust = 1C)
+14:14:53   command document.post [r9u-repost-1008141433]: state succeeded result {"id":"0ba40f8c-4519-11f0-bc18-00155de37007","number":"0000-000041","posted":true,"sessionId":1} error 
+14:14:57   Sync brought it into Rust after 4.4 s
+14:15:03   verify r9u-repost PASS (Rust = 1C)
+14:15:03 --- typed update of the customer document: compare-and-set only
+14:15:05   command document.update [r9u-blind-1008141433]: state failed result null error unprocessable/Host: ПоступлениеТоваровУслуг 0ba40f8c-4519-11f0-bc18-00155de37007 was not created by AIBA: an update needs 'expected' values or 'expectedVersion' (compare-and-set) {"code":"expected_state_required","level":"ERROR","message":"customer-created document"}
+14:15:07   command document.update [r9u-stale-1008141433]: state failed result null error unprocessable/Host: compare-and-set refused: 1 field(s) differ from what the caller expected; nothing written {"code":"conflict","field":"Комментарий","level":"ERROR","message":"expected 'not what 1C holds', 1C holds (empty)"}
+14:15:09   command document.update [r9u-claim-1008141433]: state failed result null error /Validation: 'Комментарий' must not take an AIBA marker: ПоступлениеТоваровУслуг 0ba40f8c-4519-11f0-bc18-00155de37007 was not created by AIBA 
+14:15:17   the three refused updates changed nothing
+14:15:19   command document.update [r9u-cas-1008141433]: state succeeded result {"autoUnposted":false,"id":"0ba40f8c-4519-11f0-bc18-00155de37007","posted":true,"reposted":true,"sessionId":1,"updated":true} error 
+14:15:24   Sync brought it into Rust after 4.5 s
+14:15:29   verify r9u-doc-cas PASS (Rust = 1C)
+14:15:30   command document.update [r9u-cas-back-1008141433]: state succeeded result {"autoUnposted":false,"id":"0ba40f8c-4519-11f0-bc18-00155de37007","posted":true,"reposted":true,"sessionId":1,"updated":true} error 
+14:15:34   Sync brought it into Rust after 4.4 s
+14:15:40   verify r9u-doc-cas-back PASS (Rust = 1C)
+14:15:40 --- still refused on customer documents: mark for deletion
+14:15:42   command document.markDeleted [r9u-mark-1008141433]: state failed result null error forbidden/Host: refused: ПоступлениеТоваровУслуг 0ba40f8c-4519-11f0-bc18-00155de37007 was not created by AIBA (comment does not start with 'AIBA_') null
+14:15:50   the refused deletion mark changed nothing
+14:15:50 --- catalog compare-and-set on a customer item
+14:15:50   command catalog.update [r9u-cblind-1008141433]: state  refused by Rust: command_refused: expected must name the old values of the fields the caller read (compare-and-set) result null error 
+14:15:52   command catalog.update [r9u-cstale-1008141433]: state failed result null error unprocessable/Host: compare-and-set refused: 1 field(s) differ from what the caller expected; nothing written {"code":"conflict","field":"Наименование","level":"ERROR","message":"expected 'not what 1C holds', 1C holds 'Консалтинговые услуги'"}
+14:15:54   command catalog.update [r9u-cclaim-1008141433]: state failed result null error /Validation: 'Комментарий' of Номенклатура must not take an AIBA marker: the item was not created by AIBA 
+14:16:02   the refused catalog writes changed nothing
+14:16:10   command catalog.update [r9u-ccas-1008141433]: state succeeded result {"code":"00-00000010","created":false,"id":"1bb4fb81-21a1-11f0-bbbe-00155de37007","idempotent":false,"name":"Консалтинговые услуги [r9]","sessionId":1} error 
+14:16:12   Sync brought it into Rust after 2.3 s
+01:42:21 === R9 customer-owned objects (D53) 1009014221
+01:42:21   customer document 0ba40f8c-4519-11f0-bc18-00155de37007 (comment ''), customer item 1bb4fb81-21a1-11f0-bbbe-00155de37007 ('Консалтинговые услуги')
+01:42:21 --- post an existing customer document (repost: same movements)
+01:42:31   command document.post [r9u-post-1009014221]: state succeeded result {"id":"0ba40f8c-4519-11f0-bc18-00155de37007","number":"0000-000041","posted":true,"sessionId":1} error 
+01:42:31   Sync saw the post after 0 s
+01:42:42   verify r9u-post PASS (Rust = 1C)
+01:42:42 --- unpost it, then post it back
+01:42:46   command document.unpost [r9u-unpost-1009014221]: state succeeded result {"id":"0ba40f8c-4519-11f0-bc18-00155de37007","unposted":true} error 
+01:42:50   Sync brought it into Rust after 4.4 s
+01:43:02   verify r9u-unpost PASS (Rust = 1C)
+01:43:05   command document.post [r9u-repost-1009014221]: state succeeded result {"id":"0ba40f8c-4519-11f0-bc18-00155de37007","number":"0000-000041","posted":true,"sessionId":1} error 
+01:43:11   Sync brought it into Rust after 6.5 s
+01:43:23   verify r9u-repost PASS (Rust = 1C)
+01:43:23 --- typed update of the customer document: compare-and-set only
+01:43:25   command document.update [r9u-blind-1009014221]: state failed result null error unprocessable/Host: ПоступлениеТоваровУслуг 0ba40f8c-4519-11f0-bc18-00155de37007 was not created by AIBA: an update needs 'expected' values or 'expectedVersion' (compare-and-set) {"code":"expected_state_required","level":"ERROR","message":"customer-created document"}
+01:43:27   command document.update [r9u-stale-1009014221]: state failed result null error unprocessable/Host: compare-and-set refused: 1 field(s) differ from what the caller expected; nothing written {"code":"conflict","field":"Комментарий","level":"ERROR","message":"expected 'not what 1C holds', 1C holds (empty)"}
+01:43:29   command document.update [r9u-claim-1009014221]: state failed result null error /Validation: 'Комментарий' must not take an AIBA marker: ПоступлениеТоваровУслуг 0ba40f8c-4519-11f0-bc18-00155de37007 was not created by AIBA 
+01:43:38   the three refused updates changed nothing
+01:43:40   command document.update [r9u-cas-1009014221]: state succeeded result {"autoUnposted":false,"id":"0ba40f8c-4519-11f0-bc18-00155de37007","posted":true,"reposted":true,"sessionId":1,"updated":true} error 
+01:43:47   Sync brought it into Rust after 6.6 s
+01:43:58   verify r9u-doc-cas PASS (Rust = 1C)
+01:44:01   command document.update [r9u-cas-back-1009014221]: state succeeded result {"autoUnposted":false,"id":"0ba40f8c-4519-11f0-bc18-00155de37007","posted":true,"reposted":true,"sessionId":1,"updated":true} error 
+01:44:06   Sync brought it into Rust after 4.5 s
+01:44:16   verify r9u-doc-cas-back PASS (Rust = 1C)
+01:44:16 --- still refused on customer documents: mark for deletion
+01:44:17   command document.markDeleted [r9u-mark-1009014221]: state failed result null error forbidden/Host: refused: ПоступлениеТоваровУслуг 0ba40f8c-4519-11f0-bc18-00155de37007 was not created by AIBA (comment does not start with 'AIBA_') null
+01:44:26   the refused deletion mark changed nothing
+01:44:26 --- catalog compare-and-set on a customer item
+01:44:26   command catalog.update [r9u-cblind-1009014221]: state  refused by Rust: command_refused: expected must name the old values of the fields the caller read (compare-and-set) result null error 
+01:44:28   command catalog.update [r9u-cstale-1009014221]: state failed result null error unprocessable/Host: compare-and-set refused: 1 field(s) differ from what the caller expected; nothing written {"code":"conflict","field":"Наименование","level":"ERROR","message":"expected 'not what 1C holds', 1C holds 'Консалтинговые услуги'"}
+01:44:29   command catalog.update [r9u-cclaim-1009014221]: state failed result null error /Validation: 'Комментарий' of Номенклатура must not take an AIBA marker: the item was not created by AIBA 
+01:44:37   the refused catalog writes changed nothing
+01:44:40   command catalog.update [r9u-ccas-1009014221]: state succeeded result {"code":"00-00000010","created":false,"id":"1bb4fb81-21a1-11f0-bbbe-00155de37007","idempotent":false,"name":"Консалтинговые услуги [r9]","sessionId":1} error 
+01:44:40   documents in Rust showing 'Консалтинговые услуги' before the rename: 20
+01:44:42   Sync brought the renamed item into Rust after 2.3 s
+01:44:48   documents in Rust showing the new name: 20 (of 20)
+01:44:57   verify r9u-cat-cas PASS (Rust = 1C, the referencing documents included)
+01:45:01   command catalog.update [r9u-ccas-back-1009014221]: state succeeded result {"code":"00-00000010","created":false,"id":"1bb4fb81-21a1-11f0-bbbe-00155de37007","idempotent":false,"name":"Консалтинговые услуги","sessionId":2} error 
+01:45:06   Sync brought it into Rust after 4.5 s
+01:45:19   verify r9u-cat-cas-back PASS (Rust = 1C)
+01:45:19 R9 customer-owned PASS

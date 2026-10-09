@@ -137,6 +137,18 @@ internal sealed class FakeOneC : IOneCReader
         return new SourcePage(rows, rows.Count >= limit, NextLine: rows.Count > 0 ? (int)rows[^1]["lineNo"]! : null);
     }, ct);
 
+    /// <summary>catalog item GUID → the (table, id) rows that reference it (what ReferrerSearch would find in 1C).</summary>
+    public readonly Dictionary<string, List<(string Table, string Id)>> Referrers = new(StringComparer.Ordinal);
+    public int ReferrerSearches;
+
+    public Task<ReferrerHits> ReferrersAsync(string baseId, TablePlan catalog, string id, IReadOnlyList<TablePlan> targets, CancellationToken ct)
+    {
+        Interlocked.Increment(ref ReferrerSearches);
+        var tables = targets.Select(t => t.Table).Append(Sync.Incremental.EventCoalescer.UnknownRecorderTable).ToHashSet(StringComparer.Ordinal);
+        var hits = Referrers.TryGetValue(id, out var l) ? l.Where(h => tables.Contains(h.Table)).ToList() : new List<(string, string)>();
+        return Task.FromResult(new ReferrerHits(hits, false));
+    }
+
     /// <summary>The host's date cursor (D33/D34): Дата ≥ cursor, skip the rows already read on that date.</summary>
     private static SourcePage DatePage(List<JsonObject> all, string field, string? cursorDate, int skip, int limit, DateTime? from, DateTime? to)
     {

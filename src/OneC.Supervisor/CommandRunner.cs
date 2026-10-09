@@ -20,7 +20,16 @@ namespace OneC.Supervisor;
 public sealed class CommandRunner(Supervisor sup, RustSyncTarget target, string baseName) : IAsyncDisposable
 {
     private readonly CancellationTokenSource _stop = new();
+    private readonly SemaphoreSlim _wake = new(0);
     private Task? _loop;
+
+    /// <summary>
+    /// D53: polling is this phase's transport only. The command model (id, payload, state, result,
+    /// idempotency, lease, retry) lives on the backend and does not depend on it: a future push channel
+    /// calls <see cref="Wake"/> (lease now instead of after the interval) — or hands a leased command to
+    /// <see cref="ExecuteAsync"/> — and nothing else changes.
+    /// </summary>
+    public void Wake() => _wake.Release();
 
     public TimeSpan Every { get; init; } = TimeSpan.FromSeconds(2);
     public int LeaseSeconds { get; init; } = 300;
@@ -37,12 +46,12 @@ public sealed class CommandRunner(Supervisor sup, RustSyncTarget target, string 
             try
             {
                 var leased = await target.LeaseCommandsAsync(1, LeaseSeconds, ct);
-                foreach (var c in leased) await RunAsync(c, ct);
+                foreach (var c in leased) await ExecuteAsync(c, ct);
                 if (leased.Count > 0) continue;                                  // more may be waiting
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
             catch (Exception e) { Console.Error.WriteLine($"commands: {e.Message}"); }
-            try { await Task.Delay(Every, ct); } catch (OperationCanceledException) { return; }
+            try { await _wake.WaitAsync(Every, ct); } catch (OperationCanceledException) { return; }
         }
     }
 
@@ -59,7 +68,7 @@ public sealed class CommandRunner(Supervisor sup, RustSyncTarget target, string 
         return kind switch
         {
             "document.create" => (Ops.Create, Args("docType", "body", "post")),
-            "document.update" => (Ops.Update, Args("docType", "ref", "fields", "post", "autoUnpost")),
+            "document.update" => (Ops.Update, Args("docType", "ref", "fields", "post", "autoUnpost", "expected", "expectedVersion")),
             "document.post" => (Ops.Post, Args("docType", "ref")),
             "document.unpost" => (Ops.Unpost, Args("docType", "ref")),
             "document.markDeleted" => (Ops.MarkDeleted, Args("docType", "ref")),
@@ -73,12 +82,13 @@ public sealed class CommandRunner(Supervisor sup, RustSyncTarget target, string 
     public static bool Retryable(IpcError e) =>
         e.Retryable || e.HostFatal || e.Layer is Layers.Transport or Layers.Busy or Layers.Timeout or Layers.Cancelled;
 
-    private async Task RunAsync(RustSyncTarget.LeasedCommand c, CancellationToken ct)
+    /// <summary>Runs one leased command through the host and reports its outcome — whatever delivered it.</summary>
+    public async Task ExecuteAsync(RustSyncTarget.LeasedCommand c, CancellationToken ct)
     {
         Interlocked.Increment(ref _ran);
         if (Map(c.Kind, c.Payload) is not { } call)
         {
-            await target.ReportCommandAsync(c.CommandId, false, null,
+            await target.ReportCommandAsync(c, false, null,
                 new JsonObject { ["layer"] = Layers.Validation, ["message"] = $"this Connector does not run {c.Kind}" }, ct);
             return;
         }
@@ -89,7 +99,7 @@ public sealed class CommandRunner(Supervisor sup, RustSyncTarget target, string 
             return;
         }
         var error = resp.Ok ? null : JsonSerializer.SerializeToNode(resp.Error, IpcJson.Options);
-        var r = await target.ReportCommandAsync(c.CommandId, resp.Ok, resp.Result, error, ct);
+        var r = await target.ReportCommandAsync(c, resp.Ok, resp.Result, error, ct);
         if (!r.Ok) Console.Error.WriteLine($"command {c.CommandId}: report {r.Outcome} {r.Message}");
     }
 
@@ -98,5 +108,6 @@ public sealed class CommandRunner(Supervisor sup, RustSyncTarget target, string 
         _stop.Cancel();
         if (_loop is not null) try { await _loop; } catch (OperationCanceledException) { }
         _stop.Dispose();
+        _wake.Dispose();
     }
 }

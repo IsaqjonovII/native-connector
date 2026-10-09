@@ -336,7 +336,9 @@ public sealed class RustSyncTarget(HttpClient http, IRustCredential credential, 
         return (r, (string?)json?["commandId"], (bool?)json?["deduplicated"] ?? false);
     }
 
-    public sealed record LeasedCommand(string CommandId, string Kind, string Partition, JsonObject Payload, int Attempt);
+    /// <param name="LeaseToken">Handed out with this lease only; the report must quote it (another caller, or this
+    /// Connector after the lease ran out and was handed on, is refused <c>lease_not_held</c>).</param>
+    public sealed record LeasedCommand(string CommandId, string Kind, string Partition, JsonObject Payload, int Attempt, string LeaseToken);
 
     /// <summary>The next commands of this connection, oldest first, leased to this Connector for <paramref name="leaseSeconds"/>.</summary>
     public async Task<IReadOnlyList<LeasedCommand>> LeaseCommandsAsync(int max, int leaseSeconds, CancellationToken ct)
@@ -346,20 +348,22 @@ public sealed class RustSyncTarget(HttpClient http, IRustCredential credential, 
         if (!r.Ok) throw new InvalidOperationException($"lease: {r.Outcome} {r.Message}");
         return (json?["commands"] as JsonArray ?? new JsonArray()).OfType<JsonObject>()
             .Select(c => new LeasedCommand((string)c["commandId"]!, (string)c["kind"]!, (string)c["partition"]!,
-                                           (JsonObject)c["payload"]!.DeepClone(), (int?)c["attempt"] ?? 1)).ToList();
+                                           (JsonObject)c["payload"]!.DeepClone(), (int?)c["attempt"] ?? 1,
+                                           (string?)c["leaseToken"] ?? "")).ToList();
     }
 
-    public async Task<TargetResult> ReportCommandAsync(string commandId, bool succeeded, JsonNode? result, JsonNode? error, CancellationToken ct)
+    public async Task<TargetResult> ReportCommandAsync(LeasedCommand c, bool succeeded, JsonNode? result, JsonNode? error, CancellationToken ct)
     {
         byte[] body = WriteBody(w =>
         {
             w.WriteString("state", succeeded ? "succeeded" : "failed");
+            w.WriteString("leaseToken", c.LeaseToken);
             w.WritePropertyName("result");
             if (result is null) w.WriteNullValue(); else result.WriteTo(w);
             w.WritePropertyName("error");
             if (error is null) w.WriteNullValue(); else error.WriteTo(w);
         });
-        var (r, _) = await SendAsync(HttpMethod.Post, $"{Base}/commands/{Uri.EscapeDataString(commandId)}/result", body, ct);
+        var (r, _) = await SendAsync(HttpMethod.Post, $"{Base}/commands/{Uri.EscapeDataString(c.CommandId)}/result", body, ct);
         return r;
     }
 

@@ -8,7 +8,13 @@ reports, which this document summarises and does not repeat:
 - `research/rust-backend-audit/B-rust-onec-map.md` — the Rust module `next-modules/onec`
   (master @ `6c46165`): stack, schema, routes, capability matrix, weaknesses.
 - `research/rust-backend-audit/C-write-path-map.md` — the write path backend → Connector → 1C for
-  the normal primitives.
+  the normal primitives. (Its "Rust has no command table" is outdated: `onec.command` and the
+  `/api/sync/v1/…/commands` routes exist since R9.)
+- `research/rust-backend-audit/D-aiba-next-consumers.md` (2026-10-08) — every aiba-next call to the
+  1C backend: Python endpoint, caller, Rust equivalent, status, must-have, compat vs migrate.
+- `research/rust-backend-audit/E-other-consumers.md` (2026-10-08) — KANSLER, report, partners, legacy
+  apps. Python reference there is `origin/production` @ 9b4a50b.
+- Follow-ups: `PYTHON_RETIREMENT_PLAN.md`, `DEV_RUST_CUTOVER_RUNBOOK.md`.
 
 Goal (developer, 2026-10-07): **Rust is the backend the new Connector is designed for; Python stays a
 temporary compatibility / reference target.** Rust is proven against 1C, not against Python.

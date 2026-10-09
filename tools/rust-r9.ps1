@@ -5,17 +5,18 @@
 # Run with the Supervisor up on New-RustConfig -Conn 13 -Commands.
 . D:\aiba\1c-arch\tools\rust-local.ps1
 $log = "$Out\r9-run.txt"
-$Conn = '13'
+$Conn = if ($env:R9_CONN) { $env:R9_CONN } else { '13' }        # R9_CONN / R9_BASE: another test base (e.g. the server copy bilimsrv)
+$Base = if ($env:R9_BASE) { $env:R9_BASE } else { 'bilim' }
 $DocType = 'ПоступлениеТоваровУслуг'
 function Say([string]$s) { "$(Get-Date -Format HH:mm:ss) $s" | Tee-Object -Append $log }
 function Fingerprint([string]$ref) {
     if (-not $ref) { return '' }
-    (Sql "select coalesce(string_agg(table_name || row_key || data_hash, ',' order by table_name, row_key), '') from onec.entity_data where onec_id = 13 and (row_key = '$ref' or recorder_key = '$ref')") -join ''
+    (Sql "select coalesce(string_agg(table_name || row_key || data_hash, ',' order by table_name, row_key), '') from onec.entity_data where onec_id = $Conn and (row_key = '$ref' or recorder_key = '$ref')") -join ''
 }
 function Command([string]$Kind, [string]$Key, [hashtable]$Payload) {
     $f = "$Work\r9-payload.json"
     [IO.File]::WriteAllText($f, ($Payload | ConvertTo-Json -Depth 20), (New-Object Text.UTF8Encoding $false))
-    $out = & $Sup sync-rust command --secrets $Secrets --connection $Conn --kind $Kind --key $Key --payload $f --wait 600 2>&1
+    $out = & $Sup sync-rust command --secrets $Secrets --connection $Conn --kind $Kind --key $Key --payload $f --wait 3600 2>&1
     $j = ($out | Select-Object -Last 1) | ConvertFrom-Json
     Say "  command $Kind [$Key]: state $($j.state)$(if ($j.deduplicated) { ' (deduplicated)' }) result $(($j.result | ConvertTo-Json -Compress -Depth 5)) error $(($j.error | ConvertTo-Json -Compress -Depth 5))"
     $j
@@ -26,7 +27,7 @@ function Converge([string]$Tag, [string]$ref, [string]$before) {
     if ((Fingerprint $ref) -eq $before) { Say "  FAIL: Rust did not change within 20 min"; throw "$Tag not observed" }
     Say "  Sync brought it into Rust after $([math]::Round($sw.Elapsed.TotalSeconds, 1)) s"
     Wait-Idle 1800 | Out-Null
-    $n = Sql "select table_name || ' ' || count(*) || ' posted=' || coalesce(max(raw->>'posted'), '-') || ' mark=' || coalesce(max(raw->>'deletionMark'), '-') from onec.entity_data where onec_id = 13 and (row_key = '$ref' or recorder_key = '$ref') group by table_name order by 1"
+    $n = Sql "select table_name || ' ' || count(*) || ' posted=' || coalesce(max(raw->>'posted'), '-') || ' mark=' || coalesce(max(raw->>'deletionMark'), '-') from onec.entity_data where onec_id = $Conn and (row_key = '$ref' or recorder_key = '$ref') group by table_name order by 1"
     Say "  Rust holds: $($n -join '; ')"
     Verify "r9-$Tag"
     Say "  verify r9-$Tag PASS (Rust = 1C)"
@@ -80,10 +81,10 @@ foreach ($s in $steps) {
 }
 
 # --- a real 1C/host error comes back as it is, and changes nothing ---
-$foreign = (Sql "select row_key from onec.entity_data where onec_id = 13 and table_name = 'Document_ПоступлениеТоваровУслуг' and raw->>'Комментарий' not like 'AIBA_%' order by row_key limit 1")
+$foreign = (Sql "select row_key from onec.entity_data where onec_id = $Conn and table_name = 'Document_ПоступлениеТоваровУслуг' and raw->>'Комментарий' not like 'AIBA_%' order by row_key limit 1")
 $bf = Fingerprint $foreign
-$j = Command 'document.post' "r9-foreign-$stamp" @{ docType = $DocType; ref = $foreign }
-if ($j.state -ne 'failed') { throw "posting a document AIBA did not create must fail (D18), got $($j.state)" }
+$j = Command 'document.markDeleted' "r9-foreign-$stamp" @{ docType = $DocType; ref = $foreign }
+if ($j.state -ne 'failed') { throw "marking a document AIBA did not create for deletion must fail (D53), got $($j.state)" }
 $j2 = Command 'document.update' "r9-baddate-$stamp" @{ docType = $DocType; ref = $ref; fields = @{ Date = 'not-a-date' } }
 if ($j2.state -ne 'failed') { throw "a bad date must fail, got $($j2.state)" }
 Start-Sleep 10
@@ -92,7 +93,10 @@ Say "  errors returned as 1C/host gave them; foreign document unchanged"
 
 # --- owned delete (test cleanup, not a command kind): the edge's owned hard delete; Sync removes it ---
 $before = Fingerprint $ref
-$doc = '/v1/bases/bilim/documents/' + [Uri]::EscapeDataString($DocType) + "/$ref`?hard=true"
-Invoke-WebRequest -Uri "http://127.0.0.1:$Port$doc" -Method DELETE -Headers @{ 'X-AIBA-Token' = $EdgeToken } -UseBasicParsing -TimeoutSec 600 | Out-Null
+$doc = "/v1/bases/$Base/documents/" + [Uri]::EscapeDataString($DocType) + "/$ref`?hard=true"
+# A hard delete checks references across the base: on a server base it can outlive the edge's 65 s deadline
+# and still land — the convergence below is what proves it.
+try { Invoke-WebRequest -Uri "http://127.0.0.1:$Port$doc" -Method DELETE -Headers @{ 'X-AIBA-Token' = $EdgeToken } -UseBasicParsing -TimeoutSec 600 | Out-Null }
+catch { if ("$($_.ErrorDetails.Message)" -notmatch 'did not answer') { throw }; Say '  delete still running in 1C after the edge deadline; waiting for Sync' }
 Converge 'cleanup' $ref $before
 Say 'R9 PASS'

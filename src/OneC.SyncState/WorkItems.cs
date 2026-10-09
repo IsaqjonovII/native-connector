@@ -11,7 +11,8 @@ public enum WorkFlags
     Recreated = 8,
     Refresh = 16,           // table-level: independent information register
     Verify = 32,            // table-level: version scan
-    ApprovedDelete = 64     // a delete the user approved after a policy refusal (§10)
+    ApprovedDelete = 64,    // a delete the user approved after a policy refusal (§10)
+    Force = 128             // send even when 1C's version is unchanged: a referenced item's name changed
 }
 
 public static class WorkKinds

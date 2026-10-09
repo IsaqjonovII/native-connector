@@ -1,0 +1,11 @@
+02:36:34 run 2: clean Release build
+02:37:58 run 2: dotnet test (gate mode)
+02:48:44 [xUnit.net 00:10:15.84]     OneC.Tests.ConnectionLifecycleLiveTests.FileBaseConnectWaitsForTheMachineWideLock [FAIL]
+03:04:27 Total tests: 459
+03:04:27 run 2: exit 1 in 26:28
+03:04:32 leftover processes: none
+03:04:38 leftovers: bilim ПоступлениеТоваровУслуг: 0 AIBA_REWRITE_ document(s)
+03:04:38 leftovers: bilim РеализацияТоваровУслуг: 0 AIBA_REWRITE_ document(s)
+03:04:43 leftovers: kansler ПоступлениеТоваровУслуг: 0 AIBA_REWRITE_ document(s)
+03:04:43 leftovers: kansler РеализацияТоваровУслуг: 0 AIBA_REWRITE_ document(s)
+03:04:43 leftovers: total 0

@@ -367,5 +367,30 @@ Command model the Rust data/API must allow (nothing in §1–8 blocks it):
 - After a write the Connector's normal Sync brings the object into `entity_data` — the command result
   never writes `entity_data` directly (one source of truth: 1C via Sync).
 
-Open product decision before building: posting / updating documents not created by AIBA (D18 refuses
-them; Python posts user drafts).
+**Ownership per operation (D53, decided 2026-10-08 — replaces the blanket AIBA-only rule):**
+
+| Operation | Customer-created object | Guard |
+|---|---|---|
+| `document.create` | n/a | `AIBA_` idempotency marker required (Rust refuses without it) |
+| `document.post` | allowed | exact `ref` + `docType` |
+| `document.unpost` | allowed, separate destructive kind | exact `ref` + `docType` |
+| `document.update` | allowed only as compare-and-set | `expected` field values and/or `expectedVersion` (ВерсияДанных) required; any difference = `failed` with the conflicts, nothing written; a customer document cannot take an `AIBA_` marker; an AIBA document cannot lose it |
+| `catalog.create` | n/a | `AIBA_` marker + idempotency |
+| `catalog.update` | allowed | exact `ref` + non-empty `expected` (Rust refuses without it); same marker rules as documents |
+| `document.markDeleted` | refused | AIBA-created only |
+| hard delete, `_postCreateMethod`, procedures, `exchange=true` | not exposed | refused before storing |
+
+Proven on bilim by `tools/rust-r9-customer.ps1` (customer post, unpost + repost, refused blind / stale /
+marker-claiming updates, CAS update and back, refused deletion mark, catalog CAS refusals and CAS
+rename and back), each followed by Sync convergence and `sync-verify`.
+
+**Who may do what (D54, 2026-10-09):** `POST …/commands` — the SERVICE only (aiba-next, after its own
+per-action permission check; optional `createdBy` names the user for audit); a user token gets 403
+`commands_service_only`. `…/commands/lease` and `…/commands/{id}/result` — the Connector (a user token) or
+the service; a user leases and reports only commands of partitions of their companies; a report must quote
+the lease's `leaseToken` (409 `lease_not_held` otherwise).
+
+**Transport (D53):** polling `…/commands/lease` is this phase's transport only. The command row (id,
+payload, state, result, idempotency key, lease, attempts) does not depend on it: the Connector's
+`CommandRunner.ExecuteAsync` runs one leased command whatever delivered it, and `Wake()` lets a later
+push channel trigger a lease at once. No WebSocket, presence or push channel is built in this phase.

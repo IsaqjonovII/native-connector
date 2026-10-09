@@ -23,6 +23,14 @@ public sealed class WriteRejected : Exception
     public bool Unprocessable { get; }
     public IReadOnlyList<WriteDiagnostic> Diagnostics { get; }
 
+    /// <summary>
+    /// Not a refusal of the request: an earlier write with the same idempotency marker is still inside
+    /// 1C (its caller timed out, the host did not). Its outcome is unknown, so the answer is "busy, try
+    /// again" — a retry later finds the marker and returns that document (R9, 2026-10-08: a create that
+    /// outlived its 245 s deadline in a bilim stall made the retry report a final failure).
+    /// </summary>
+    public bool InFlight { get; private init; }
+
     public WriteRejected(string message, bool unprocessable, IReadOnlyList<WriteDiagnostic>? diagnostics = null)
         : base(message)
     {
@@ -31,6 +39,9 @@ public sealed class WriteRejected : Exception
     }
 
     public static WriteRejected Bad(string message) => new(message, unprocessable: false);
+
+    public static WriteRejected MarkerInFlight(string marker) =>
+        new($"another write with marker '{marker}' is still running", unprocessable: false) { InFlight = true };
 }
 
 /// <summary>

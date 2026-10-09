@@ -1,0 +1,12 @@
+bilimsrv → Rust connection 299: 1 partition(s), 0 org binding(s)
+1C read in 20,2 s
+backend read: 2002 stored rows in 0,4 s
+OK   ChartOfAccounts_Хозрасчетный: 1C count 884, canonical 884 (sent 884), backend 884 [shared 884]; missing 0, stale/extra 0, wrong partition 0, wrong content 0, duplicate keys 0
+OK   Catalog_Банки: 1C count 919, canonical 919 (sent 919), backend 919 [shared 919]; missing 0, stale/extra 0, wrong partition 0, wrong content 0, duplicate keys 0
+OK   Catalog_Контрагенты: 1C count 60, canonical 60 (sent 60), backend 60 [shared 60]; missing 0, stale/extra 0, wrong partition 0, wrong content 0, duplicate keys 0
+OK   Catalog_Номенклатура: 1C count 15, canonical 15 (sent 15), backend 15 [shared 15]; missing 0, stale/extra 0, wrong partition 0, wrong content 0, duplicate keys 0
+OK   Document_ПоступлениеТоваровУслуг: 1C count 69, canonical 69 (sent 69), backend 69 [shared 69]; missing 0, stale/extra 0, wrong partition 0, wrong content 0, duplicate keys 0
+OK   Document_РеализацияТоваровУслуг: 1C count 0, canonical 0 (sent 0), backend 0 [shared 0]; missing 0, stale/extra 0, wrong partition 0, wrong content 0, duplicate keys 0
+OK   AccountingRegister_Хозрасчетный_RecordType: 1C count 936 (whole register; window from 2025-08-01), canonical 50 (sent 50), backend 50 [shared 50]; missing 0, stale/extra 0, wrong partition 0, wrong content 0, duplicate keys 0
+OK   InformationRegister_КурсыВалют: 1C count 5, canonical 5 (sent 5), backend 5 [shared 5]; missing 0, stale/extra 0, wrong partition 0, wrong content 0, duplicate keys 0
+PASS: the Rust backend holds exactly the canonical 1C rows

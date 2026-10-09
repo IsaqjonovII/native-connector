@@ -1,5 +1,5 @@
-bilim → Rust connection 13: 1 partition(s), 0 org binding(s)
-1C read in 3,8 s
+bilimsrv → Rust connection 299: 1 partition(s), 0 org binding(s)
+1C read in 7,6 s
 backend read: 2000 stored rows in 0,4 s
 OK   ChartOfAccounts_Хозрасчетный: 1C count 884, canonical 884 (sent 884), backend 884 [shared 884]; missing 0, stale/extra 0, wrong partition 0, wrong content 0, duplicate keys 0
 OK   Catalog_Банки: 1C count 919, canonical 919 (sent 919), backend 919 [shared 919]; missing 0, stale/extra 0, wrong partition 0, wrong content 0, duplicate keys 0

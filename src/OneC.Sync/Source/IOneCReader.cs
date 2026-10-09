@@ -96,7 +96,19 @@ public interface IOneCReader
     /// <summary>A recorder's movements in one register, a page after <paramref name="afterLine"/> (R-8), with sync keys.</summary>
     Task<SourcePage> MovementsAsync(string baseId, TablePlan register, string recorderDocument, string recorderId, int? afterLine, int limit,
                                     CancellationToken ct);
+
+    /// <summary>
+    /// The synced objects whose rows show catalog item <paramref name="id"/>'s name: documents and catalogs of
+    /// <paramref name="targets"/> as (their table, id), recorders of the recorded registers as
+    /// (<c>?recorder</c>, id), each inside its table's window. Asked only when the item's name changed.
+    /// A reader that cannot search answers none.
+    /// </summary>
+    Task<ReferrerHits> ReferrersAsync(string baseId, TablePlan catalog, string id, IReadOnlyList<TablePlan> targets, CancellationToken ct) =>
+        Task.FromResult(new ReferrerHits(new List<(string, string)>(), false));
 }
+
+/// <param name="Truncated">More referrers exist than one search returns; the rest keep the old name until they change.</param>
+public sealed record ReferrerHits(List<(string Table, string Id)> Hits, bool Truncated);
 
 /// <summary>The table itself is missing in 1C (renamed, removed, other configuration): a config problem, not a delete.</summary>
 public sealed class OneCMetadataMissingException(string message) : Exception(message);

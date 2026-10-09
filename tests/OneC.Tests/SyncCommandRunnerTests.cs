@@ -10,7 +10,7 @@ public sealed class SyncCommandRunnerTests
 {
     [Theory]
     [InlineData("document.create", Ops.Create, "docType,body,post")]
-    [InlineData("document.update", Ops.Update, "docType,ref,fields,post,autoUnpost")]
+    [InlineData("document.update", Ops.Update, "docType,ref,fields,post,autoUnpost,expected,expectedVersion")]
     [InlineData("document.post", Ops.Post, "docType,ref")]
     [InlineData("document.unpost", Ops.Unpost, "docType,ref")]
     [InlineData("document.markDeleted", Ops.MarkDeleted, "docType,ref")]
@@ -21,7 +21,8 @@ public sealed class SyncCommandRunnerTests
         var all = new JsonObject
         {
             ["docType"] = "D", ["catalog"] = "C", ["ref"] = "r", ["body"] = new JsonObject(), ["fields"] = new JsonObject(), ["post"] = true,
-            ["autoUnpost"] = true, ["expected"] = new JsonObject(), ["set"] = new JsonObject(), ["exchange"] = true, ["hard"] = true
+            ["autoUnpost"] = true, ["expected"] = new JsonObject(), ["expectedVersion"] = "AAA=", ["set"] = new JsonObject(),
+            ["exchange"] = true, ["hard"] = true
         };
         var m = CommandRunner.Map(kind, all);
         Assert.NotNull(m);

@@ -286,6 +286,10 @@ public sealed class SnapshotRunner(SyncDb db, IOneCReader reader, Uploader uploa
                     bool Stored(MappedRow r) => c.NotStored?.Contains(r.Key) != true;
                     if (t.Family is Families.Catalog or Families.Document)
                         foreach (var r in c.Rows.Where(Stored)) tx.SetVersion(baseId, t.Table, r.Key, r.DataVersion);
+                    // What each item shows elsewhere, so a later rename is recognised (SyncObjectHandler).
+                    if (t.Family == Families.Catalog)
+                        foreach (var r in c.Rows.Where(r => Stored(r) && r.Shown is not null))
+                            tx.SetMeta(CanonicalMapper.ShownKey(baseId, t.Table, r.Key), r.Shown!);
                     else if (t.Family == Families.IndependentInfoRegister)
                         foreach (var r in c.Rows.Where(Stored)) tx.SetRegisterRow(baseId, t.Table, r.Key, Incremental.RefreshRegisterHandler.Hash(r.Row), 0);
                     // Several partitions: where each object / recorder went, so a later delete or

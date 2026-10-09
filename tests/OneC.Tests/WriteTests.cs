@@ -124,7 +124,8 @@ public class WriteLiveTests
         Assert.Equal(OneCLayer.Host, ex.Layer);
         Assert.Contains("not created by AIBA", ex.Message);
 
-        Assert.Throws<OneCException>(() => w.Post(b, Doc, foreign));
+        // Post / unpost of a customer-created document by exact ref is ALLOWED since D53 (not exercised
+        // here: this is a server base). The untyped field update, delete and deletion mark stay owned-only.
         Assert.Throws<OneCException>(() => w.Delete(b, Doc, foreign));
         Assert.Throws<OneCException>(() => w.MarkForDeletion(b, Doc, foreign));
     }

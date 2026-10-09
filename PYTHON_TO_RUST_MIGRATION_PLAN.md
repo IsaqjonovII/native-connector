@@ -52,6 +52,11 @@ bases without a check, whole-file in-memory multipart, the dead write-idempotenc
 
 ## 2. Blocks
 
+**State 2026-10-08 (later):** write ownership per operation (D53) proven on customer objects; consumer
+gap audit done (`research/rust-backend-audit/D`, `E`); the must-have Rust gaps it found are closed
+(MIGRATION_STATUS). Dev cut-over: `DEV_RUST_CUTOVER_RUNBOOK.md` (prepared, not run — needs access).
+Retirement stages and exact blockers: `PYTHON_RETIREMENT_PLAN.md`. Polling is a temporary transport.
+
 **State 2026-10-08:** R7 (security / data integrity), R9 (normal writes: documents create / update /
 post / unpost / mark-deleted, catalogs create / compare-and-set, each proven Rust → Connector → 1C → Sync
 → Rust = 1C) and R10 (per-base explicit switch + rollback between the isolated backend/1c and Rust, coverage

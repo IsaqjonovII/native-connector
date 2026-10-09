@@ -1,0 +1,10 @@
+03:15:21 run 4: dotnet test (gate mode)
+03:24:22 Total tests: 459
+03:24:22 run 4: exit 0 in 09:00
+03:24:27 leftover processes: none
+03:24:29 leftovers: bilim ПоступлениеТоваровУслуг: 0 AIBA_REWRITE_ document(s)
+03:24:29 leftovers: bilim РеализацияТоваровУслуг: 0 AIBA_REWRITE_ document(s)
+03:24:33 leftovers: kansler ПоступлениеТоваровУслуг: 0 AIBA_REWRITE_ document(s)
+03:24:33 leftovers: kansler РеализацияТоваровУслуг: 0 AIBA_REWRITE_ document(s)
+03:24:33 leftovers: total 0
+03:24:35 gate run 4 PASS

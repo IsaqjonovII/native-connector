@@ -135,6 +135,37 @@ public sealed class SupervisorReader(Supervisor sup) : IOneCReader
         return new SourcePage(Rows(r), r["hasMore"]?.GetValue<bool>() ?? false, NextLine: r["nextLine"]?.GetValue<int>());
     }
 
+    public async Task<ReferrerHits> ReferrersAsync(string baseId, TablePlan catalog, string id, IReadOnlyList<TablePlan> targets, CancellationToken ct)
+    {
+        var byName = new Dictionary<(string, string), TablePlan>();
+        var list = new JsonArray();
+        foreach (var t in targets)
+        {
+            string? kind = t.Family switch
+            {
+                Families.Document => "document",
+                Families.Catalog => "catalog",
+                _ when Families.IsRecorded(t.Family) => Families.RegisterKind(t.Family),
+                _ => null                                                   // charts and independent registers are refreshed whole
+            };
+            if (kind is null) continue;
+            byName[(kind, t.Name)] = t;
+            var o = new JsonObject { ["kind"] = kind, ["name"] = t.Name };
+            if (t.From is { } f) o["from"] = f.ToString("yyyy-MM-ddTHH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
+            list.Add(o);
+        }
+        if (list.Count == 0) return new ReferrerHits(new List<(string, string)>(), false);
+        var r = await Call(baseId, Ops.Referrers, new JsonObject { ["catalog"] = catalog.Name, ["id"] = id, ["targets"] = list }, ct);
+        var hits = new List<(string, string)>();
+        foreach (var h in r["hits"]!.AsArray().OfType<JsonObject>())
+        {
+            string kind = (string)h["kind"]!, hid = ((string)h["id"]!).ToLowerInvariant();
+            if (kind == "recorder") hits.Add((OneC.Sync.Incremental.EventCoalescer.UnknownRecorderTable, hid));
+            else if (byName.TryGetValue((kind, (string)h["name"]!), out var t)) hits.Add((t.Table, hid));
+        }
+        return new ReferrerHits(hits, (bool?)r["truncated"] ?? false);
+    }
+
     private async Task<JsonObject> Call(string baseId, string op, JsonObject args, CancellationToken ct) =>
         Ok(await sup.SendAsync(baseId, op, args, DeadlineMs, ct));
 

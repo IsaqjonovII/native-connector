@@ -1,0 +1,12 @@
+01:47:12 run 1: clean Release build
+01:49:31 run 1: dotnet test (gate mode)
+02:03:54 [xUnit.net 00:14:21.86]     OneC.Tests.SupervisorLiveTests.EdgeRefusesAForeignDocumentWith403AndNeedsTheToken [FAIL]
+02:05:18 [xUnit.net 00:15:45.83]     OneC.Tests.SupervisorLiveTests.SpawnsOneHostPerPlatformAndEachReportsItsOwnVersion [FAIL]
+02:33:54 Total tests: 459
+02:33:54 run 1: exit 1 in 44:22
+02:33:59 leftover processes: none
+02:34:03 leftovers: bilim ПоступлениеТоваровУслуг: 1 AIBA_REWRITE_ document(s): 95e38c82-c2ff-11f1-b4e8-b42e998ffa17
+02:34:03 leftovers: bilim РеализацияТоваровУслуг: 0 AIBA_REWRITE_ document(s)
+02:34:06 leftovers: kansler ПоступлениеТоваровУслуг: 0 AIBA_REWRITE_ document(s)
+02:34:06 leftovers: kansler РеализацияТоваровУслуг: 0 AIBA_REWRITE_ document(s)
+02:34:06 leftovers: total 1

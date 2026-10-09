@@ -36,10 +36,12 @@ public sealed class SyncRecorderHandler(SyncDb db, IOneCReader reader, IBackendS
 
         // The document itself (only when its table is synced).
         MappedRow? doc = null;
+        bool docInWindow = true;
         if (docTable is not null)
         {
             var rows = await reader.ByIdsAsync(baseId, docTable, new[] { recorder }, ct);
             if (rows.Count == 0) return await deletes.HandleAsync(baseId, item with { Kind = WorkKinds.DeleteObject }, ct);
+            docInWindow = CanonicalMapper.InWindow(docTable, rows[0]);
             doc = CanonicalMapper.Map(docTable, rows[0]);
         }
 
@@ -56,7 +58,8 @@ public sealed class SyncRecorderHandler(SyncDb db, IOneCReader reader, IBackendS
                 {
                     var page = await reader.MovementsAsync(baseId, reg, docType, recorder, after, PageSize, ct);
                     MovementReads++;
-                    list.AddRange(page.Rows.Select(r => CanonicalMapper.Map(reg, r, doc?.Row.SourceVersion)));
+                    // Rows before the register's window are not sent, so the reconcile below removes any copy.
+                    list.AddRange(page.Rows.Where(r => CanonicalMapper.InWindow(reg, r)).Select(r => CanonicalMapper.Map(reg, r, doc?.Row.SourceVersion)));
                     if (!page.HasMore || page.NextLine is null) break;
                     after = page.NextLine;
                 }
@@ -66,8 +69,9 @@ public sealed class SyncRecorderHandler(SyncDb db, IOneCReader reader, IBackendS
 
         // Where everything goes; rows of an organisation without a binding are counted, not sent.
         var unmapped = new List<(string Org, string Table)>();
-        string? docPartition = doc is null ? null : partitions.PartitionOf(docTable!, doc);
-        if (doc is not null && docPartition is null) unmapped.Add((doc.OrgRef ?? "", docTable!.Table));
+        // A document before its table's window is not sent (and leaves every partition it was in, below).
+        string? docPartition = doc is null || !docInWindow ? null : partitions.PartitionOf(docTable!, doc);
+        if (doc is not null && docInWindow && docPartition is null) unmapped.Add((doc.OrgRef ?? "", docTable!.Table));
         var byPartition = new Dictionary<string, Dictionary<TablePlan, List<MappedRow>>>(StringComparer.Ordinal);
         foreach (var (reg, rows) in movements)
             foreach (var r in rows)

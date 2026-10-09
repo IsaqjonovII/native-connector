@@ -77,7 +77,7 @@ public sealed class DocumentWriter
             : null;
 
         if (stripe is not null && !stripe.Wait(_writes.GateTimeout, ct))
-            throw WriteRejected.Bad($"another write with marker '{parsed.IdempotencyMarker}' is still running");
+            throw WriteRejected.MarkerInFlight(parsed.IdempotencyMarker!);
         try
         {
             return _writes.RunGated(baseName, post ? WriteKind.Post : WriteKind.Create, ct,
@@ -177,29 +177,32 @@ public sealed class DocumentWriter
     // ---------------- update ----------------
 
     /// <summary>
-    /// The old PUT (ОбновитьДокумент, main.os:17093) on an owned document: header fields by the
-    /// same conversion as create, references included. Changed (D38): only AIBA's own documents
-    /// (D18); tabular sections are refused instead of silently ignored (Q25); a value that fails
-    /// refuses the update instead of a 200 with <c>updateErrors</c>; a posted document is changed
-    /// and posted again in ONE write, so a failed post leaves it exactly as it was (the old
-    /// unpost-then-post could leave it unposted); no fill steps run.
+    /// The old PUT (ОбновитьДокумент, main.os:17093), the typed update contract: header fields by the
+    /// same conversion as create, references included. Changed (D38): tabular sections are refused
+    /// instead of silently ignored (Q25); a value that fails refuses the update instead of a 200 with
+    /// <c>updateErrors</c>; a posted document is changed and posted again in ONE write, so a failed
+    /// post leaves it exactly as it was (the old unpost-then-post could leave it unposted); no fill
+    /// steps run. Ownership (D53): an AIBA-created document may be updated as before; a customer-created
+    /// one only by compare-and-set — <paramref name="expected"/> field values and/or
+    /// <paramref name="expectedVersion"/> (ВерсияДанных) the caller read — and its Комментарий can never
+    /// take the AIBA marker.
     /// </summary>
     /// <param name="post">Post after the change; null keeps the document's posted state.</param>
     /// <param name="autoUnpost">A posted document may be changed only when true (the old guard).</param>
     public DocumentUpdated Update(string baseName, string docType, string id, JsonObject fields, bool? post, bool autoUnpost,
-                                  CancellationToken ct = default)
+                                  CancellationToken ct = default, JsonObject? expected = null, string? expectedVersion = null)
     {
         ReadService.ValidateIdentifier(docType, nameof(docType));
         if (!Guid.TryParse(id, out _)) throw WriteRejected.Bad($"'{id}' is not a GUID");
         var given = new List<KeyValuePair<string, JsonNode>>();
+        string? newComment = null;
         foreach (var (k, v) in fields)
         {
             if (k.StartsWith('_') || v is null) continue;
             if (k == "tabularSections" || v is JsonArray)
                 throw WriteRejected.Bad($"'{k}': tabular sections cannot be changed by an update; create a new document (D38)");
-            if (k == DocumentWriteBody.CommentField &&
-                (v is not JsonValue cv || !cv.TryGetValue(out string? c) || !c.StartsWith(_writes.CommentPrefix, StringComparison.Ordinal)))
-                throw WriteRejected.Bad($"'{k}' must keep its AIBA marker ('{_writes.CommentPrefix}…')");
+            if (k == DocumentWriteBody.CommentField)
+                newComment = v is JsonValue cv && cv.TryGetValue(out string? c) ? c : throw WriteRejected.Bad($"'{k}' must be text");
             given.Add(new(k is "Date" or "date" ? "Дата"
                           : k.Equals("Номер", StringComparison.OrdinalIgnoreCase) || k.Equals("number", StringComparison.OrdinalIgnoreCase) ? "Номер"
                           : k, v));
@@ -208,8 +211,22 @@ public sealed class DocumentWriter
         return _writes.RunGated(baseName, WriteKind.Update, ct, ctx =>
         {
             using var scope = new ComScope();
-            var obj = _writes.LoadOwned(ctx, scope, docType, id, "Update");
+            var obj = _writes.LoadByRef(ctx, scope, docType, id, "Update");
+            bool owned = _writes.IsOwned(ctx, obj);
+            bool marked = newComment?.StartsWith(_writes.CommentPrefix, StringComparison.Ordinal) == true;
+            if (owned && newComment is not null && !marked)
+                throw WriteRejected.Bad($"'{DocumentWriteBody.CommentField}' must keep its AIBA marker ('{_writes.CommentPrefix}…')");
+            if (!owned && marked)
+                throw WriteRejected.Bad($"'{DocumentWriteBody.CommentField}' must not take an AIBA marker: {docType} {id} was not created by AIBA");
+            if (!owned && (expected is null || expected.Count == 0) && expectedVersion is null)
+                throw new WriteRejected($"{docType} {id} was not created by AIBA: an update needs 'expected' values or 'expectedVersion' (compare-and-set)",
+                                        unprocessable: true,
+                                        new[] { new WriteDiagnostic("expected_state_required", WriteDiagnostic.Error, null, "customer-created document") });
             var schema = WriteSchemas.Get(ctx, docType);
+            var conflicts = ExpectedState.Conflicts(ctx, obj, expected, expectedVersion,
+                                                    f => schema.Attribute(f) is not null || f is "Дата" or "Номер" or "Проведен" or "ПометкаУдаления",
+                                                    $"Документ.{docType}");
+            if (conflicts.Count > 0) throw ExpectedState.Refusal(conflicts);
             bool wasPosted = Dispatch.GetBool(obj, "Проведен", ctx.Error);
             if (wasPosted && !autoUnpost)
                 throw new WriteRejected($"{docType} {id} is posted; send autoUnpost=true to change it", unprocessable: true,

@@ -81,12 +81,54 @@ public sealed class SyncEngineHost : IDisposable
     public SyncScheduler Scheduler { get; }
     public SyncDb Db => _db;
 
-    public void Start(TimeSpan? tick = null) => _loop ??= Scheduler.RunAsync(tick ?? TimeSpan.FromSeconds(1), _stop.Token);
+    /// <summary>
+    /// Non-null: every base tells the backend this often that this Connector serves it ("active"), and
+    /// "stopped" on a clean stop. The old Connector's hub socket did this; without it the cloud shows a
+    /// base the new Connector serves as offline and never picks it (consumer audit, 2026-10-08). The
+    /// backend demotes a base whose reports stop (Rust ticker T1: 180 s), so this must be well below that.
+    /// </summary>
+    public TimeSpan? ReportStatusEvery { get; init; }
+    private Task? _heartbeat;
+
+    public void Start(TimeSpan? tick = null)
+    {
+        _loop ??= Scheduler.RunAsync(tick ?? TimeSpan.FromSeconds(1), _stop.Token);
+        if (ReportStatusEvery is { } every) _heartbeat ??= HeartbeatAsync(every, _stop.Token);
+    }
+
+    private async Task HeartbeatAsync(TimeSpan every, CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            await ReportStatusAsync("active", ct);
+            try { await Task.Delay(every, ct); } catch (OperationCanceledException) { return; }
+        }
+    }
+
+    private async Task ReportStatusAsync(string state, CancellationToken ct)
+    {
+        foreach (var p in _plans.Values)
+        {
+            try
+            {
+                var r = await _target.ReportStatusAsync(new BaseStatus(p.ConnectionId, state, null, null, _agents[p.BaseId].LastError), ct);
+                if (!r.Ok) Console.Error.WriteLine($"status {p.BaseId}: {r.Outcome} {r.Message}");
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
+            catch (Exception e) { Console.Error.WriteLine($"status {p.BaseId}: {e.Message}"); }
+        }
+    }
 
     public async Task StopAsync()
     {
         _stop.Cancel();
         if (_loop is not null) await _loop;
+        if (_heartbeat is not null)
+        {
+            await _heartbeat;
+            using var quick = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await ReportStatusAsync("stopped", quick.Token);                       // offline now, not after the backend's timeout
+        }
     }
 
     // ---------------- status ----------------

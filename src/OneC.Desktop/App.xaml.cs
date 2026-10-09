@@ -260,6 +260,10 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        // Which build a support log came from (tools/publish.ps1 stamps -p:Version).
+        Log("start " + (System.Reflection.Assembly.GetExecutingAssembly()
+            .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion ?? "unversioned"));
         if (Arg("import") is string import && File.Exists(import))
             Bases.ImportConnectionStrings(import);
 
