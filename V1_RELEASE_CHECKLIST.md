@@ -18,7 +18,7 @@ nothing deployed. Production stays closed (D53).
 | In-flight retry | a create that outlived its deadline in a bilim stall: lease retry found the marker → one document (live, 2026-10-08) |
 | Command lease tokens | live `OnlyTheHolderOfTheCurrentLeaseReportsACommandsOutcome` |
 | **Command authorization** (P-1b) | command creation service-only (403 for every user token incl. tenant admin); lease/report limited to the user's partitions; single-tenant module without a known tenant refuses users. Live `OnlyTheServiceCreatesA1CWrite…`; Rust 104/104 with DB tests |
-| aiba-next proxy escape (part of P-1a) | `rewrite_path` refuses dot segments / encoded separators; `onec_proxy` tests 8/8 (aiba-next checkout, uncommitted) |
+| aiba-next proxy escape (part of P-1a) | `rewrite_path` refuses dot segments / encoded separators; `onec_proxy` tests 8/8; pushed to aiba-next `development` (`866c6342`), pipeline 17697 deployed dev-next (health 200) |
 | Base online heartbeat | `/status` sets active/inactive on connection + bindings; live test + seen live (`active` right after start) |
 | Rust consumer gaps (aiba-next) | entity-data `total`, venkon types, `ref_in`/`owner`/`number`, recon freshness — each checked live (`D-aiba-next-consumers.md`) |
 | Per-base backend selection + rollback | R10 rerun on the final build 2026-10-09: refused without `"switch"` · switch to backend/1c, verify PASS · a 1C change while on Python reaches backend/1c (PASS) and not Rust (0 rows) · rollback to Rust catches up in 2.2 s from its own cursor, verify PASS · cleanup PASS. (The script's fixed 20 s wait raced the idle event-log poll; it now waits for the feed) |
@@ -31,7 +31,7 @@ nothing deployed. Production stays closed (D53).
 | # | Blocker | Needs |
 |---|---|---|
 | 1 | **The Desktop cannot reach a real Rust module.** It signs in to the legacy AIBA cloud (`api.aiba.group`); the module accepts aiba-next tokens; the app writes the stub target (D-2) and the Rust target is loopback + service secret only | aiba-next login in the Desktop + a user-JWT route to `/api/sync/v1` + a guarded non-loopback Rust target (`DEV_RUST_CUTOVER_RUNBOOK` P2/P7) |
-| 2 | **`feat/sync-api-v1` is behind the module's master** (10 commits; master already verifies EdDSA tokens) — the branch's `check_token` is HS256 only, so in production every user token (the Connector's) would be refused | rebase on master; `sync::check_token` uses master's key set |
+| 2 | ~~module branch behind master / HS256-only~~ **DONE 2026-10-09**: merged onto master (`ba89766`), `sync::check_token` verifies with master's `JwtVerify` (EdDSA + legacy HS256, no lease tokens); cargo 189/189, live Connector suite 18/18 against that build; pushed to onec `development`, pipeline 17698 published `10.0.0.33:5000/onec:development`. Not yet released to any dev tenant | a dev-tenant release of `onec:development` (superadmin / fleet) |
 | 3 | **P-1a**: aiba-next's `/api/v2/1c/*` still forwards any logged-in user as the service on the module's `/api/v2/*` routes | product call: forward the user's JWT (breaks nothing new) or a route allowlist + `onec.view` gate |
 | 4 | Decision: `avtoprovodka.edit` for create/update/post/catalog writes and `avtoprovodka.delete` for unpost/markDeleted (the code precedent), or unpost/markDeleted service-internal in v1 (D54) | developer |
 | 5 | aiba-next has no route that creates commands for a user (its writes go through the hub relay for the OLD Connector) | aiba-next route with `require_company(perm)` → module (service); `PYTHON_RETIREMENT_PLAN` W |
