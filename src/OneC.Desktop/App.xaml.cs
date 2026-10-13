@@ -32,6 +32,8 @@ public partial class App : Application
     {
         var c = new OneC.Cloud.CloudClient(OneC.Cloud.CloudEnvironment.Find(CloudStore.Dir, envKey), CloudStore, Device);
         c.SignedOut += (_, _) => RaiseCloudChanged();
+        c.SessionEnded += (_, _) => Notifier.Notify(NoticeKind.Warning, "Signed out of AIBA",
+            "Your AIBA session ended. Sign in again so the bases keep reaching the cloud.");
         return c;
     }
 
@@ -264,13 +266,123 @@ public partial class App : Application
         Log("start " + (System.Reflection.Assembly.GetExecutingAssembly()
             .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
             .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion ?? "unversioned"));
+        // One copy per data folder: a second start (a click on the shortcut while the app sits in the
+        // notification area, or the Run entry at sign-in) only brings the running copy forward. Two
+        // copies would run two engines against the same bases. A dev copy with its own
+        // AIBA_CONNECTOR_DATA is a different folder and still runs alongside.
+        string key = "AIBA.Connector." + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(DataDir.ToUpperInvariant())))[..16];
+        _single = new Mutex(true, @"Local\" + key, out bool first);
+        if (!first)
+        {
+            if (EventWaitHandle.TryOpenExisting(@"Local\" + key + ".show", out var other)) { other.Set(); other.Dispose(); }
+            Log("already running: brought the running copy forward");
+            // Application.Exit() before any window exists leaves the process running: end it outright.
+            Environment.Exit(0);
+        }
+        _showRequest = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\" + key + ".show");
+        ThreadPool.RegisterWaitForSingleObject(_showRequest,
+            (_, _) => Window?.DispatcherQueue.TryEnqueue(ShowWindow), null, Timeout.Infinite, executeOnlyOnce: false);
+
         if (Arg("import") is string import && File.Exists(import))
             Bases.ImportConnectionStrings(import);
 
+        Notifier.Start();
+        // The engine dying on its own (not a restart, not Quit) is worth a notice.
+        var lastState = Supervisor.State;
+        Supervisor.StateChanged += (_, _) =>
+        {
+            var now = Supervisor.State;
+            if (now == SupervisorState.Failed && lastState != SupervisorState.Failed && !Quitting)
+                Notifier.Notify(NoticeKind.Error, "Sync stopped", "The 1C engine stopped: " + Supervisor.LastError, "resources");
+            lastState = now;
+        };
+
         Window = new MainWindow();
-        Window.Activate();
+        // A window that was hidden to the notification area and shown again does not end the app
+        // when it finally closes (measured): end it explicitly, after MainWindow's own Closed
+        // handlers (registered in its constructor) have stopped the engine.
+        Window.Closed += (_, _) => Exit();
+        Tray = new TrayIcon(WinRT.Interop.WindowNative.GetWindowHandle(Window), IconPath, "AIBA Connector", ShowWindow, Quit);
+        StartupAndPower.RepairStartEntry();
+        StartupAndPower.KeepAwake(KeepAwake);
+        // Started by the Run entry at sign-in: stay in the notification area, sync runs anyway.
+        if (Environment.GetCommandLineArgs().Contains(StartupAndPower.BackgroundArg))
+        {
+            Window.HideSplash();
+            Log("started in the background");
+        }
+        else
+        {
+            Window.Activate();
+            Window.PlaySplash();
+        }
+        // Screenshot/test switch, like --page and --theme: one sample in-app toast per kind.
+        if (Arg("demo-toasts") is not null)
+            foreach (var k in new[] { NoticeKind.Error, NoticeKind.Warning, NoticeKind.Success })
+                Window.ShowToast(k, k + " sample", "This is how AIBA Connector tells you about " + k.ToString().ToLowerInvariant() + " events.");
         _ = RestartSupervisorAsync();
         _ = LoadCompaniesAsync();                       // restored session → header company picker
+    }
+
+    private static Mutex? _single;
+    private static EventWaitHandle? _showRequest;
+
+    /// <summary>The logo, next to the exe (window caption and notification area).</summary>
+    public static string IconPath => Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
+
+    internal static TrayIcon? Tray { get; private set; }
+
+    /// <summary>True once the user chose Quit: closing the window then really ends the app.</summary>
+    public static bool Quitting { get; private set; }
+
+    /// <summary>Closing the window keeps the app (and sync) running in the notification area. Default on.</summary>
+    public static bool RunInBackground
+    {
+        get => LoadUi("background") != "false";
+        set => SaveUi("background", value ? "true" : "false");
+    }
+
+    /// <summary>Windows notifications for sync problems while the window is not in front. Default on.</summary>
+    public static bool NotificationsOn
+    {
+        get => LoadUi("notifications") != "false";
+        set => SaveUi("notifications", value ? "true" : "false");
+    }
+
+    /// <summary>Windows does not go to sleep while the app runs. Default off.</summary>
+    public static bool KeepAwake
+    {
+        get => LoadUi("keepAwake") == "true";
+        set { SaveUi("keepAwake", value ? "true" : "false"); StartupAndPower.KeepAwake(value); }
+    }
+
+    /// <summary>Shown once, the first time closing the window hides it instead of quitting.</summary>
+    public static void HiddenToTray()
+    {
+        if (LoadUi("trayHintShown") == "true") return;
+        SaveUi("trayHintShown", "true");
+        // A Windows notification when Windows allows them, else the old tray balloon.
+        if (NotificationsOn && Notifier.WindowsBlocks() is null)
+            Notifier.Notify(NoticeKind.Info, "AIBA Connector is still running", "Sync goes on. Open it or quit from its icon in the notification area.");
+        else
+            Tray?.Notify("AIBA Connector is still running", "Sync goes on. Open it or quit from this icon.");
+    }
+
+    public static void ShowWindow()
+    {
+        if (Window is null) return;
+        Window.AppWindow.Show();
+        Window.Activate();
+    }
+
+    /// <summary>Ends the app: the window's Closed handlers stop the engine and report the bases offline.</summary>
+    public static void Quit()
+    {
+        Quitting = true;
+        Tray?.Dispose();
+        Tray = null;
+        Window?.Close();
     }
 
     /// <summary>

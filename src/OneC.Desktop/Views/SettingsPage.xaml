@@ -7,8 +7,90 @@
         <StackPanel Padding="28,20,28,20" Spacing="12" MaxWidth="900" HorizontalAlignment="Left">
             <StackPanel>
                 <TextBlock Text="Settings" Style="{StaticResource PageTitleStyle}" />
-                <TextBlock Style="{StaticResource PageSubtitleStyle}" Text="Tools for support and checking." />
+                <TextBlock Style="{StaticResource PageSubtitleStyle}" Text="How the app starts and runs, and tools for support and checking." />
             </StackPanel>
+
+            <TextBlock Text="Startup and power" Style="{StaticResource SectionTitleStyle}" Margin="0,12,0,0" />
+            <Border Style="{StaticResource PanelStyle}" Padding="16,14,16,14">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon Glyph="&#xE7E8;" FontSize="20" VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                        <TextBlock Text="Start with Windows" FontSize="14" FontWeight="SemiBold" />
+                        <TextBlock Text="Starts when you sign in to Windows, in the notification area, and syncs without opening a window."
+                                   Style="{StaticResource MetricLabelStyle}" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <ToggleSwitch x:Name="StartupToggle" Grid.Column="2" VerticalAlignment="Center" OnContent="On" OffContent="Off"
+                                  MinWidth="0" Toggled="Startup_Toggled" />
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource PanelStyle}" Padding="16,14,16,14">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon Glyph="&#xE9F5;" FontSize="20" VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                        <TextBlock Text="Keep running in the background" FontSize="14" FontWeight="SemiBold" />
+                        <TextBlock Text="Closing the window keeps AIBA Connector in the notification area, so sync goes on. Quit from its icon to stop."
+                                   Style="{StaticResource MetricLabelStyle}" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <ToggleSwitch x:Name="BackgroundToggle" Grid.Column="2" VerticalAlignment="Center" OnContent="On" OffContent="Off"
+                                  MinWidth="0" Toggled="Background_Toggled" />
+                </Grid>
+            </Border>
+            <Border Style="{StaticResource PanelStyle}" Padding="16,14,16,14">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon Glyph="&#xE708;" FontSize="20" VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                        <TextBlock Text="Keep this PC awake" FontSize="14" FontWeight="SemiBold" />
+                        <TextBlock Text="Windows does not go to sleep while AIBA Connector runs, so sync does not stop overnight. The screen can still turn off."
+                                   Style="{StaticResource MetricLabelStyle}" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <ToggleSwitch x:Name="AwakeToggle" Grid.Column="2" VerticalAlignment="Center" OnContent="On" OffContent="Off"
+                                  MinWidth="0" Toggled="Awake_Toggled" />
+                </Grid>
+            </Border>
+
+            <Border Style="{StaticResource PanelStyle}" Padding="16,14,16,14">
+                <Grid ColumnSpacing="16" RowSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <FontIcon Glyph="&#xEA8F;" FontSize="20" VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                        <TextBlock Text="Notifications" FontSize="14" FontWeight="SemiBold" />
+                        <TextBlock Text="Tells you when sync stops, a base cannot be reached or you are signed out — as a Windows notification while the window is closed."
+                                   Style="{StaticResource MetricLabelStyle}" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <ToggleSwitch x:Name="NotifyToggle" Grid.Column="2" VerticalAlignment="Center" OnContent="On" OffContent="Off"
+                                  MinWidth="0" Toggled="Notify_Toggled" />
+                    <!-- Only when Windows itself has them off: there is no permission to ask for. -->
+                    <InfoBar x:Name="NotifyBlocked" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Severity="Warning"
+                             IsClosable="False" IsOpen="False">
+                        <InfoBar.ActionButton>
+                            <Button Content="Open Windows settings" Click="NotifySettings_Click" />
+                        </InfoBar.ActionButton>
+                    </InfoBar>
+                </Grid>
+            </Border>
 
             <TextBlock Text="Tools" Style="{StaticResource SectionTitleStyle}" Margin="0,12,0,0" />
             <!-- A settings-style row: icon, what it is, one button. -->

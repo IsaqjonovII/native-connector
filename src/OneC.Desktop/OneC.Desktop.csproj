@@ -22,7 +22,18 @@
     <LangVersion>latest</LangVersion>
     <DefaultLanguage>en-US</DefaultLanguage>
     <NoWarn>CA1416</NoWarn>
+    <!-- The exe / taskbar / Alt+Tab icon: the AIBA Connector logo (same as the old Connector). -->
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- Also loaded at run time: the window caption and the notification-area icon. -->
+    <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The header logo. -->
+    <Content Include="Assets\AppLogo.png" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Startup splash: the mobile app's splash_fast.gif (600x600, 75 frames, 1.5 s) and its final frame. -->
+    <Content Include="Assets\Splash.gif" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\SplashEnd.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.4.0" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.4654" />

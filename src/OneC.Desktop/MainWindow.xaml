@@ -27,11 +27,7 @@
             </Grid.ColumnDefinitions>
             <Grid x:Name="AppTitleBar" Padding="14,0,0,0" Background="Transparent">
                 <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                    <Border Width="18" Height="18" CornerRadius="4" Background="{ThemeResource AccentFillColorDefaultBrush}">
-                        <TextBlock Text="A" FontSize="11" FontWeight="Bold"
-                                   Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
+                    <Image Source="ms-appx:///Assets/AppLogo.png" Width="20" Height="20" VerticalAlignment="Center" />
                     <TextBlock Text="AIBA Connector" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"
                                Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                     <Border x:Name="EnvBadge" Visibility="Collapsed" CornerRadius="4" Padding="6,1,6,1" VerticalAlignment="Center"
@@ -147,6 +143,22 @@
                              Click="RestartLink_Click" />
             <TextBlock x:Name="StatusRight" Grid.Column="3" VerticalAlignment="Center" FontSize="12"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        </Grid>
+
+        <!-- In-app toasts (Notifier, when the window is in front): newest at the bottom, each
+             closes itself; an error stays until closed. -->
+        <StackPanel x:Name="ToastHost" Grid.Row="1" Width="380" Spacing="8" Margin="0,0,20,16"
+                    HorizontalAlignment="Right" VerticalAlignment="Bottom" />
+
+        <!-- Startup splash, the AIBA mobile app's (next/app/ios SplashScreen): black, the eagle
+             mark drawing itself in, once (~1.5 s), then the app fades in. Not shown when the app
+             starts in the background. The phone shows the GIF in a 200 pt box on a ~375 pt screen;
+             the mark fills under half the GIF's canvas, so 200 px on a 1360 px window reads as a
+             speck — 360 px keeps the mobile proportion (600 px GIF: sharp up to 166 % scaling). -->
+        <Grid x:Name="Splash" Grid.RowSpan="3" Background="Black">
+            <Border x:Name="SplashBox" Width="360" Height="360" CornerRadius="16" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Image x:Name="SplashImage" Stretch="Uniform" />
+            </Border>
         </Grid>
     </Grid>
 </Window>

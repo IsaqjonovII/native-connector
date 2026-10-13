@@ -20,6 +20,18 @@ public sealed partial class MainWindow : Window
         // A 48 px header holds the company picker; tall caption buttons match it.
         AppWindow.TitleBar.PreferredHeightOption = Microsoft.UI.Windowing.TitleBarHeightOption.Tall;
         Title = "AIBA Connector";
+        if (File.Exists(App.IconPath)) AppWindow.SetIcon(App.IconPath);
+        // The close button hides to the notification area while "run in the background" is on: the
+        // engine keeps syncing. Quit (tray menu) or the setting turned off really closes.
+        AppWindow.Closing += (s, e) =>
+        {
+            if (App.Quitting || !App.RunInBackground) return;
+            e.Cancel = true;
+            s.Hide();
+            App.HiddenToTray();
+        };
+        Closed += (_, _) => App.Tray?.Dispose();
+        Activated += (_, e) => _active = e.WindowActivationState != WindowActivationState.Deactivated;
 
         int w = int.TryParse(App.Arg("width"), out int pw) ? pw : 1360;
         int h = int.TryParse(App.Arg("height"), out int ph) ? ph : 860;
@@ -290,6 +302,84 @@ public sealed partial class MainWindow : Window
     /// Opens a page from code (a card's Browse, Settings' tools, --page). Pages kept out of the menu
     /// (Browse data: a support tool, user 2026-09-30) open with Settings highlighted.
     /// </summary>
+    /// <summary>
+    /// Plays the startup splash once: the GIF (it loops forever, so after its 1.5 s it is swapped for
+    /// its own final frame), then a short fade into the app. Screenshot and test starts (--page) skip it.
+    /// </summary>
+    public async void PlaySplash()
+    {
+        string gif = Path.Combine(AppContext.BaseDirectory, "Assets", "Splash.gif");
+        if (App.Arg("page") is not null || !File.Exists(gif)) { HideSplash(); return; }
+        // Time the 1.5 s from when the GIF is actually on screen, not from Activate(): the first
+        // frame comes up later than that, and the start of the animation was being cut (measured).
+        var bmp = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage();
+        var opened = new TaskCompletionSource();
+        bmp.ImageOpened += (_, _) => opened.TrySetResult();
+        bmp.ImageFailed += (_, _) => opened.TrySetResult();
+        bmp.UriSource = new Uri(gif);
+        SplashImage.Source = bmp;
+        await Task.WhenAny(opened.Task, Task.Delay(3000));
+        await Task.Delay(1500);
+        SplashImage.Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(
+            new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", "SplashEnd.png")));
+        await Task.Delay(250);
+        // The image is faded on its own as well: fading only the panel left the logo's box opaque
+        // over the half-faded app (measured).
+        var sb = new Storyboard();
+        foreach (UIElement target in new UIElement[] { Splash, SplashBox })
+        {
+            var fade = new DoubleAnimation { From = 1, To = 0, Duration = TimeSpan.FromMilliseconds(300) };
+            Storyboard.SetTarget(fade, target);
+            Storyboard.SetTargetProperty(fade, "Opacity");
+            sb.Children.Add(fade);
+        }
+        sb.Completed += (_, _) => HideSplash();
+        sb.Begin();
+    }
+
+    private bool _active;
+
+    /// <summary>Shown and focused: a notice goes to an in-app toast, not to Windows.</summary>
+    public bool IsInFront => _active && AppWindow.IsVisible;
+
+    /// <summary>An in-app toast, bottom-right. Info/success close after 6 s, warnings 10 s; errors stay.</summary>
+    public void ShowToast(NoticeKind kind, string title, string text)
+    {
+        var bar = new InfoBar
+        {
+            Title = title,
+            Message = text,
+            IsOpen = true,
+            IsClosable = true,
+            Severity = kind switch
+            {
+                NoticeKind.Success => InfoBarSeverity.Success,
+                NoticeKind.Warning => InfoBarSeverity.Warning,
+                NoticeKind.Error => InfoBarSeverity.Error,
+                _ => InfoBarSeverity.Informational,
+            },
+            // The page underneath shows through a plain InfoBar; a solid card reads as a toast.
+            Background = (Brush)Application.Current.Resources["SolidBackgroundFillColorTertiaryBrush"],
+            Shadow = new ThemeShadow(),
+            Translation = new System.Numerics.Vector3(0, 0, 16),
+        };
+        bar.Closed += (_, _) => ToastHost.Children.Remove(bar);
+        // Never a wall of them: the oldest goes first.
+        while (ToastHost.Children.Count >= 3) ToastHost.Children.RemoveAt(0);
+        ToastHost.Children.Add(bar);
+        if (kind == NoticeKind.Error) return;
+        var t = new DispatcherTimer { Interval = TimeSpan.FromSeconds(kind == NoticeKind.Warning ? 10 : 6) };
+        t.Tick += (_, _) => { t.Stop(); bar.IsOpen = false; ToastHost.Children.Remove(bar); };
+        t.Start();
+    }
+
+    /// <summary>No splash: a background start, or the window shown again from the notification area.</summary>
+    public void HideSplash()
+    {
+        Splash.Visibility = Visibility.Collapsed;
+        SplashImage.Source = null;
+    }
+
     public void Go(string tag, object? parameter = null)
     {
         var item = Nav.MenuItems.OfType<NavigationViewItem>().FirstOrDefault(i => (string)i.Tag == tag);
@@ -368,8 +458,36 @@ public sealed partial class MainWindow : Window
             _readyBases = hosts.Where(h => h!["state"]?.GetValue<string>() == "Ready")
                                .SelectMany(h => h!["bases"]!.AsArray().Select(n => n!.GetValue<string>()))
                                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            WatchBases();
         }
         catch (Exception ex) when (ex is HttpRequestException or EdgeException or TaskCanceledException) { }
+    }
+
+    // When each connected base was first seen not ready, and which ones were already reported.
+    private readonly Dictionary<string, DateTime> _downSince = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _reportedDown = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// A base that stays unreachable for 2 minutes gets one notice; it is not repeated until the
+    /// base has been back. 2 minutes, because a host restart or a cold 1C connect is normal.
+    /// </summary>
+    private void WatchBases()
+    {
+        var now = DateTime.UtcNow;
+        foreach (var b in App.Bases.Bases)
+        {
+            if (_readyBases.Contains(b.Name))
+            {
+                _downSince.Remove(b.Name);
+                if (_reportedDown.Remove(b.Name))
+                    Notifier.Notify(NoticeKind.Success, "Base is back", $"{b.Name} is connected again. Sync goes on.", "connections");
+                continue;
+            }
+            if (!_downSince.TryGetValue(b.Name, out var since)) { _downSince[b.Name] = now; continue; }
+            if (now - since >= TimeSpan.FromMinutes(2) && _reportedDown.Add(b.Name))
+                Notifier.Notify(NoticeKind.Warning, "Base is not reachable",
+                    $"AIBA Connector cannot reach {b.Name} for 2 minutes. Its data is not syncing.", "connections");
+        }
     }
 }
 

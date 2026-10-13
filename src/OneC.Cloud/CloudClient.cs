@@ -28,6 +28,8 @@ public sealed class CloudClient : IDisposable
 
     /// <summary>The session ended (refresh refused, or sign-out). Raised on the calling thread.</summary>
     public event EventHandler? SignedOut;
+    /// <summary>The cloud refused the session (refresh token rejected): signed out without the user asking.</summary>
+    public event EventHandler? SessionEnded;
 
     public CloudClient(CloudEnvironment env, SessionStore store, string deviceId, HttpMessageHandler? handler = null)
     {
@@ -147,6 +149,7 @@ public sealed class CloudClient : IDisposable
             if (resp.StatusCode == HttpStatusCode.Unauthorized && attempt == 0)
             {
                 if (await RefreshAsync(s.AccessToken, ct)) continue;
+                SessionEnded?.Invoke(this, EventArgs.Empty);
                 SignOut();
                 throw new CloudException(401, "auth.session_ended", CloudException.Friendly(401, "auth.invalid_refresh_token"));
             }
